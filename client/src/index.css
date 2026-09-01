@@ -1,0 +1,50 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@theme {
+  /* ikli palette */
+  --color-ink: #1a1a1a;
+  --color-paper: #ffffff;
+  --color-muted: #9a9a9a;
+  --color-faint: #e9e6df;
+  --color-danger: #b91c1c;
+
+  /* shadcn/ui semantic tokens, mapped onto the same palette */
+  --color-background: #ffffff;
+  --color-foreground: #1a1a1a;
+  --color-primary: #1a1a1a;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f4f2ec;
+  --color-secondary-foreground: #1a1a1a;
+  --color-muted-foreground: #9a9a9a;
+  --color-accent: #f4f2ec;
+  --color-accent-foreground: #1a1a1a;
+  --color-destructive: #b91c1c;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #1a1a1a;
+  --color-input: #1a1a1a;
+  --color-ring: #1a1a1a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #1a1a1a;
+
+  --font-display: 'Caveat', cursive;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
