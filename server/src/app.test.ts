@@ -57,11 +57,13 @@ test('bare domains get https:// prepended; garbage is rejected', async () => {
   assert.equal(bad.status, 400)
 })
 
-test('redirect follows the destination and records stats', async () => {
+test('visit shows the interstitial with the destination and records stats', async () => {
   const link = await createLink('https://example.com/target')
   const res = await fetch(`${base}/${link.slug}`, { redirect: 'manual' })
-  assert.equal(res.status, 302)
-  assert.equal(res.headers.get('location'), 'https://example.com/target')
+  assert.equal(res.status, 200)
+  const html = await res.text()
+  assert.match(html, /You're about to visit example\.com/)
+  assert.match(html, /href="https:\/\/example\.com\/target"/)
 
   const stats = await (
     await fetch(`${base}/api/links/${link.slug}/stats`)
@@ -107,7 +109,7 @@ test('slug rename keeps the link reachable at the new slug only', async () => {
   const old = await fetch(`${base}/${link.slug}`, { redirect: 'manual' })
   assert.equal(old.status, 404)
   const renamed = await fetch(`${base}/${newSlug}`, { redirect: 'manual' })
-  assert.equal(renamed.status, 302)
+  assert.equal(renamed.status, 200)
 })
 
 test('password-protected link serves a form, unlocks with the password', async () => {
@@ -136,7 +138,14 @@ test('password-protected link serves a form, unlocks with the password', async (
     body: 'password=hunter2',
     redirect: 'manual',
   })
-  assert.equal(right.status, 302)
+  assert.equal(right.status, 200)
+  assert.match(await right.text(), /You're about to visit example\.com/)
+})
+
+test('interstitial html-escapes the destination', async () => {
+  const link = await createLink('https://example.com/p?a=1&b=2')
+  const html = await (await fetch(`${base}/${link.slug}`)).text()
+  assert.match(html, /href="https:\/\/example\.com\/p\?a=1&amp;b=2"/)
 })
 
 test('qr style accepts new fields, normalizes old-shape payloads, rejects junk', async () => {
