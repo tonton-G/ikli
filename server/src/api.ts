@@ -51,6 +51,7 @@ function normalizeQrStyle(input: any): QrStyle | null {
     typeof s.frameText === 'string' &&
     s.frameText.length <= 24 &&
     hexOrNull(s.frameColor) &&
+    ['sm', 'md', 'lg'].includes(s.logoSize) &&
     (s.logo === null ||
       (typeof s.logo === 'string' &&
         (LOGO_DATA_RE.test(s.logo) ? s.logo.length <= MAX_LOGO_CHARS : s.logo.length <= 8)));
