@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 const PRESET_COLORS = ['#1a1a1a', '#4a72d8', '#2f7d5c', '#8b5cf6', '#d1495b']
 const EMOJI_PRESETS = ['🔗', '⭐', '❤️', '🚀', '🍕', '🎧']
 const MAX_LOGO_CHARS = 90_000
-// Downscale ladder for uploads: first square that fits the cap wins.
+// Downscale ladder for uploads: first square cap rule
 const LOGO_SIDES = [256, 192, 144, 112, 80, 56]
 const LOGO_SIZE_LABELS = { sm: 'small', md: 'medium', lg: 'large' } as const
 
