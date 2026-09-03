@@ -6,6 +6,7 @@ import { rm } from 'node:fs/promises'
 import type { Server } from 'node:http'
 import { createApp } from './app.js'
 import { FileStore } from './file-store.js'
+import { DEFAULT_QR_STYLE } from './types.js'
 
 const dataFile = join(tmpdir(), `ikli-test-${process.pid}.json`)
 let server: Server
@@ -158,6 +159,7 @@ test('qr style accepts new fields, normalizes old-shape payloads, rejects junk',
         frameText: 'Menu →',
         frameColor: '#2f7d5c',
         logo: '🍕',
+        logoSize: 'lg',
       },
     }),
   })
@@ -165,6 +167,7 @@ test('qr style accepts new fields, normalizes old-shape payloads, rejects junk',
   const saved = (await full.json()).qrStyle
   assert.equal(saved.pattern, 'fluid')
   assert.equal(saved.logo, '🍕')
+  assert.equal(saved.logoSize, 'lg')
   assert.equal(saved.bg, null)
 
   // an old client sending only the original four fields still works
@@ -182,7 +185,9 @@ test('qr style accepts new fields, normalizes old-shape payloads, rejects junk',
     }),
   })
   assert.equal(oldShape.status, 200)
-  assert.equal((await oldShape.json()).qrStyle.frameText, 'Scan me')
+  const defaulted = (await oldShape.json()).qrStyle
+  assert.equal(defaulted.frameText, 'Scan me')
+  assert.equal(defaulted.logoSize, 'md')
 
   const oversized = await fetch(`${base}/api/links/${link.slug}`, {
     method: 'PATCH',
@@ -199,6 +204,16 @@ test('qr style accepts new fields, normalizes old-shape payloads, rejects junk',
     }),
   })
   assert.equal(oversized.status, 400)
+
+  const badSize = await fetch(`${base}/api/links/${link.slug}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      key: link.editKey,
+      qrStyle: { ...DEFAULT_QR_STYLE, logoSize: 'huge' },
+    }),
+  })
+  assert.equal(badSize.status, 400)
 })
 
 test('expired links return 410', async () => {
