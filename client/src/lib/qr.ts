@@ -6,7 +6,8 @@ import type { QrStyle } from './api';
 // export. Coordinates are in module units; the viewBox handles scaling.
 
 const QUIET = 2; // quiet-zone modules around the code
-const LOGO_FRACTION = 0.24; // width of the center knockout, as a fraction of the code
+// width of the center knockout, as a fraction of the code
+const LOGO_FRACTIONS: Record<QrStyle['logoSize'], number> = { sm: 0.18, md: 0.24, lg: 0.3 };
 
 function esc(text: string): string {
   return text
@@ -100,7 +101,7 @@ export function renderQrSvg(text: string, style: QrStyle): string {
     x >= 0 && y >= 0 && x < size && y < size && data[y * size + x] === 1 && !inFinder(x, y, size);
 
   // center knockout for the logo
-  const logoBox = style.logo ? Math.ceil(size * LOGO_FRACTION) : 0;
+  const logoBox = style.logo ? Math.ceil(size * LOGO_FRACTIONS[style.logoSize]) : 0;
   const logoStart = Math.floor((size - logoBox) / 2);
   const inLogo = (x: number, y: number): boolean =>
     logoBox > 0 &&
