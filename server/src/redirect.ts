@@ -27,8 +27,22 @@ function recordClick(
   link.referrers[referrer] = (link.referrers[referrer] ?? 0) + 1
 }
 
-// Minimal server-rendered page, styled to match the app, for the two cases
-// where the redirect can't just redirect: password gate and expired/gone.
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[c]!,
+  )
+}
+
+// Minimal server-rendered page, styled to match the app. Every visit lands on
+// one of these: the interstitial, the password gate, or expired/gone.
 function page(title: string, body: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -54,6 +68,14 @@ function page(title: string, body: string): string {
   button { font-family:'Caveat',cursive; font-size:20px; font-weight:600; padding:8px 26px;
            background:#1a1a1a; color:#fff; border:none; border-radius:999px; cursor:pointer; }
   .err { color:#b91c1c; font-size:13px; }
+  .dest { width:100%; box-sizing:border-box; text-align:left; border:1.5px solid #1a1a1a;
+          border-radius:14px; padding:16px 18px; font-size:13px; line-height:1.6;
+          word-break:break-all; }
+  .dest b { display:block; font-size:15px; margin-bottom:6px; }
+  a.go { display:inline-block; text-decoration:none; font-family:'Caveat',cursive; font-size:20px;
+         font-weight:600; padding:8px 26px; background:#1a1a1a; color:#fff; border-radius:999px; }
+  .note { font-size:12px; }
+  .note a { color:inherit; text-decoration-color:#c8c8c8; text-underline-offset:3px; }
 </style>
 </head>
 <body>
@@ -61,6 +83,35 @@ function page(title: string, body: string): string {
 <main>${body}</main>
 </body>
 </html>`
+}
+
+// Every visit stops here first: the destination is spelled out in full and the
+// visitor chooses to continue. Deliberately not skippable — a short link that
+// silently bounces you somewhere is a phishing tool.
+function interstitial(link: LinkRecord): string {
+  const url = escapeHtml(link.longUrl)
+  let host = ''
+  let linkable = false
+  try {
+    const parsed = new URL(link.longUrl)
+    host = escapeHtml(parsed.host)
+    linkable = parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    /* unparseable destination: show it, but never make it clickable */
+  }
+
+  return page(
+    'continue',
+    `<h1>You're about to visit${host ? ` ${host}` : ' another site'}.</h1>
+     <p>ikli didn't check what's there. Read the full address before you continue.</p>
+     <div class="dest">${host ? `<b>${host}</b>` : ''}${url}</div>
+     ${
+       linkable
+         ? `<a class="go" href="${url}" rel="noopener noreferrer">Continue</a>`
+         : `<p class="err">This destination isn't a valid web address, so it can't be opened.</p>`
+     }
+     <p class="note"><a href="/">Make your own short link</a></p>`,
+  )
 }
 
 export function createRedirectRouter(store: LinkStore): Router {
@@ -113,7 +164,7 @@ export function createRedirectRouter(store: LinkStore): Router {
 
     recordClick(link, req)
     await store.put(link)
-    res.redirect(302, link.longUrl)
+    res.send(interstitial(link))
   })
 
   router.post('/:slug([a-z0-9-]{3,32})/unlock', async (req, res) => {
@@ -141,7 +192,7 @@ export function createRedirectRouter(store: LinkStore): Router {
 
     recordClick(link, req)
     await store.put(link)
-    res.redirect(302, link.longUrl)
+    res.send(interstitial(link))
   })
 
   return router
