@@ -10,6 +10,7 @@ export interface QrStyle {
   frameText: string
   frameColor: string | null // null = follow module color
   logo: string | null // data:image/... URI or a short emoji
+  logoSize: 'sm' | 'md' | 'lg' // share of the code the logo covers
 }
 
 export interface LinkPublic {
