@@ -4,12 +4,16 @@ import { api, shortUrlFor, SHORT_BASE_DISPLAY, type QrStyle } from '@/lib/api'
 import { recallKey } from '@/lib/session'
 import { renderQrSvg, downloadPng, downloadSvg } from '@/lib/qr'
 import { Shell, Tile } from '@/components/shell'
+import { EmojiPicker } from '@/components/emoji-picker'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const PRESET_COLORS = ['#1a1a1a', '#4a72d8', '#2f7d5c', '#8b5cf6', '#d1495b']
 const EMOJI_PRESETS = ['🔗', '⭐', '❤️', '🚀', '🍕', '🎧']
 const MAX_LOGO_CHARS = 90_000
+// Downscale ladder for uploads: first square that fits the cap wins.
+const LOGO_SIDES = [256, 192, 144, 112, 80, 56]
+const LOGO_SIZE_LABELS = { sm: 'small', md: 'medium', lg: 'large' } as const
 
 /* ---------- option glyphs ---------- */
 
@@ -286,31 +290,51 @@ function Section({
 
 /* ---------- logo upload ---------- */
 
-async function fileToLogo(file: File): Promise<string> {
-  if (file.type === 'image/svg+xml') {
-    const dataUri = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = () => reject(new Error('read failed'))
-      reader.readAsDataURL(file)
-    })
-    if (dataUri.length > MAX_LOGO_CHARS) throw new Error('too big')
-    return dataUri
-  }
-  // rasters: normalize to a 256px PNG so any size upload fits the cap
-  const bitmap = await createImageBitmap(file)
-  const side = 256
+function readDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('read failed'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('decode failed'))
+    img.src = src
+  })
+}
+
+/** Center-fit onto a square canvas. PNG out, so transparency survives. */
+function squarePng(img: HTMLImageElement, side: number): string {
   const canvas = document.createElement('canvas')
   canvas.width = side
   canvas.height = side
   const ctx = canvas.getContext('2d')!
-  const scale = Math.min(side / bitmap.width, side / bitmap.height)
-  const w = bitmap.width * scale
-  const h = bitmap.height * scale
-  ctx.drawImage(bitmap, (side - w) / 2, (side - h) / 2, w, h)
-  const dataUri = canvas.toDataURL('image/png')
-  if (dataUri.length > MAX_LOGO_CHARS) throw new Error('too big')
-  return dataUri
+  const iw = img.naturalWidth || side // SVGs can report no intrinsic size
+  const ih = img.naturalHeight || side
+  const scale = Math.min(side / iw, side / ih)
+  const w = iw * scale
+  const h = ih * scale
+  ctx.drawImage(img, (side - w) / 2, (side - h) / 2, w, h)
+  return canvas.toDataURL('image/png')
+}
+
+/** Any upload becomes a logo: shrink down the ladder until it fits the cap. */
+async function fileToLogo(file: File): Promise<string> {
+  const original = await readDataUrl(file)
+  // an SVG that already fits stays vector — nothing to gain by rasterizing
+  if (file.type === 'image/svg+xml' && original.length <= MAX_LOGO_CHARS)
+    return original
+  const img = await loadImage(original)
+  for (const side of LOGO_SIDES) {
+    const uri = squarePng(img, side)
+    if (uri.length <= MAX_LOGO_CHARS) return uri
+  }
+  throw new Error('too big')
 }
 
 /* ---------- page ---------- */
@@ -360,6 +384,8 @@ export default function QrCustomize() {
 
   const customColor = !PRESET_COLORS.includes(style.color)
   const uploadedLogo = style.logo?.startsWith('data:image/') ?? false
+  const customEmoji =
+    style.logo !== null && !uploadedLogo && !EMOJI_PRESETS.includes(style.logo)
 
   return (
     <Shell
@@ -539,6 +565,11 @@ export default function QrCustomize() {
                   {e}
                 </button>
               ))}
+              <EmojiPicker
+                active={customEmoji}
+                current={customEmoji ? style.logo : null}
+                onPick={(emoji) => apply({ logo: emoji })}
+              />
               <button
                 type="button"
                 aria-label="upload logo"
@@ -569,9 +600,22 @@ export default function QrCustomize() {
                 }}
               />
             </div>
+            {style.logo !== null && (
+              <div className="mt-3 flex items-center gap-2.5">
+                <span className="font-mono text-xs text-muted">size</span>
+                {(['sm', 'md', 'lg'] as const).map((s) => (
+                  <TextPill
+                    key={s}
+                    label={LOGO_SIZE_LABELS[s]}
+                    selected={style.logoSize === s}
+                    onClick={() => apply({ logoSize: s })}
+                  />
+                ))}
+              </div>
+            )}
             {logoError && (
               <p className="mt-2 font-mono text-xs text-danger">
-                couldn't use that image — try a smaller PNG, JPEG, or SVG
+                couldn't read that image — try a PNG, JPEG, or SVG
               </p>
             )}
           </Section>
