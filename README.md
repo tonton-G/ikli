@@ -110,6 +110,7 @@ npm run build     # typecheck + production builds for client and server
 - **Static assets locked down** — S3 bucket has Block Public Access enabled; CloudFront reaches it via Origin Access Control, so the bucket has no public endpoint of its own.
 - **No SSH surface** — all instance access is via SSM Session Manager; port 22 is never opened.
 - **App-level** — edit keys never stored in plaintext (SHA-256), link passwords salted with scrypt, destination URLs restricted to http/https, and password-protected links never expose their destination through the public API.
+- **No silent redirects** — every visit (link or QR scan) lands on an interstitial that spells out the full destination and requires the visitor to press Continue. There is no setting to turn it off, so an ikli link can't be used to hide a phishing target behind a short URL.
 
 Explicitly out of scope for this project's size: WAF, GuardDuty, AWS Config, and a customer-managed KMS key. Reasonable additions for a production system, disproportionate for a portfolio timebox.
 
