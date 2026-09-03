@@ -16,6 +16,8 @@ export interface QrStyle {
   frameColor: string | null;
   /** Center logo: a data:image/... URI, or a short emoji string. null = none. */
   logo: string | null;
+  /** How much of the code the center logo covers. */
+  logoSize: 'sm' | 'md' | 'lg';
 }
 
 export const DEFAULT_QR_STYLE: QrStyle = {
@@ -30,6 +32,7 @@ export const DEFAULT_QR_STYLE: QrStyle = {
   frameText: 'Scan me',
   frameColor: null,
   logo: null,
+  logoSize: 'md',
 };
 
 /** Fill in defaults for records saved before newer style fields existed. */
