@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Check, Copy } from 'lucide-react'
 import {
   api,
   shortUrlFor,
@@ -19,7 +20,8 @@ export default function Result() {
   const [link, setLink] = useState<LinkPublic | null>(
     (location.state as LinkPublic) ?? null,
   )
-  const [copied, setCopied] = useState<'url' | 'key' | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [keySaved, setKeySaved] = useState(false)
   const editKey = recallKey(slug)
 
   // Direct visit / refresh: re-fetch public metadata for the QR style.
@@ -37,9 +39,9 @@ export default function Result() {
     [link, shortUrl],
   )
 
-  function flash(what: 'url' | 'key') {
-    setCopied(what)
-    setTimeout(() => setCopied(null), 1600)
+  function flash() {
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1600)
   }
 
   if (!link) return <Shell right={null}>{null}</Shell>
@@ -67,9 +69,9 @@ export default function Result() {
         <div className="mt-9 flex flex-wrap justify-center gap-4">
           <Button
             variant="outline"
-            onClick={() => copyText(shortUrl).then(() => flash('url'))}
+            onClick={() => copyText(shortUrl).then(flash)}
           >
-            {copied === 'url' ? 'Copied ✓' : 'Copy'}
+            {copied ? 'Copied ✓' : 'Copy'}
           </Button>
           <Button variant="outline" onClick={() => navigate(`/${slug}/edit`)}>
             Edit slug
@@ -112,11 +114,20 @@ export default function Result() {
               />
               <Button
                 className="shrink-0"
-                onClick={() => copyText(editKey).then(() => flash('key'))}
+                onClick={() => copyText(editKey).then(() => setKeySaved(true))}
               >
-                {copied === 'key' ? 'Saved ✓' : 'Save'}
+                {keySaved ? (
+                  <Check className="size-5" strokeWidth={2.2} />
+                ) : (
+                  <Copy className="size-5" strokeWidth={2.2} />
+                )}
+                {keySaved ? 'Saved' : 'Save'}
               </Button>
             </div>
+            <p className="mt-4 font-mono text-xs text-muted">
+              coming back later? paste {SHORT_BASE_DISPLAY}/{slug} on the home page and
+              it'll ask for this key.
+            </p>
           </div>
         )}
       </div>
