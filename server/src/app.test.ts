@@ -6,7 +6,7 @@ import { rm } from 'node:fs/promises'
 import type { Server } from 'node:http'
 import { createApp } from './app.js'
 import { FileStore } from './file-store.js'
-import { DEFAULT_QR_STYLE } from './types.js'
+import { DEFAULT_QR_STYLE, OTHER_REFERRER, REFERRER_CAP, type LinkStore } from './types.js'
 
 const dataFile = join(tmpdir(), `ikli-test-${process.pid}.json`)
 let server: Server
@@ -66,10 +66,13 @@ test('visit redirects to the destination and records stats', async () => {
   // A cached redirect would be an uncounted click.
   assert.equal(res.headers.get('cache-control'), 'no-store')
 
+  // Same visitor again: one more click, still one unique.
+  await fetch(`${base}/${link.slug}`, { redirect: 'manual' })
+
   const stats = await (
     await fetch(`${base}/api/links/${link.slug}/stats`)
   ).json()
-  assert.equal(stats.clicks, 1)
+  assert.equal(stats.clicks, 2)
   assert.equal(stats.uniques, 1)
 })
 
@@ -247,4 +250,86 @@ test('concurrent visits are all counted, none lost', async () => {
     perDay.reduce((a, b) => a + b, 0),
     VISITS,
   )
+})
+
+test('referrer map is capped; overflow folds into one bucket', async () => {
+  const link = await createLink()
+  const distinct = REFERRER_CAP + 10
+  await Promise.all(
+    Array.from({ length: distinct }, (_, i) =>
+      fetch(`${base}/${link.slug}`, {
+        redirect: 'manual',
+        headers: { referer: `https://site-${i}.example/page` },
+      }),
+    ),
+  )
+  const stats = await (await fetch(`${base}/api/links/${link.slug}/stats`)).json()
+  const keys = Object.keys(stats.referrers)
+  assert.equal(keys.length, REFERRER_CAP + 1, 'cap plus the overflow bucket')
+  assert.ok(keys.includes(OTHER_REFERRER))
+  assert.equal(stats.referrers[OTHER_REFERRER], distinct - REFERRER_CAP)
+  // Total attribution still matches total clicks: nothing was dropped.
+  const attributed = Object.values(stats.referrers as Record<string, number>).reduce((a, b) => a + b, 0)
+  assert.equal(attributed, distinct)
+  assert.equal(stats.clicks, distinct)
+})
+
+test('a Referer that is not a plausible host is bucketed, not counted as direct', async () => {
+  const link = await createLink()
+  for (const referer of [
+    'not a url',
+    'https://[::1]/x', // bracketed IPv6 literal
+    'https://bad_host!.example/',
+    'https://' + 'a'.repeat(300) + '.example/', // over the 253-char limit
+  ]) {
+    await fetch(`${base}/${link.slug}`, { redirect: 'manual', headers: { referer } })
+  }
+  // And one genuinely direct visit.
+  await fetch(`${base}/${link.slug}`, { redirect: 'manual' })
+
+  const stats = await (await fetch(`${base}/api/links/${link.slug}/stats`)).json()
+  assert.equal(stats.referrers[OTHER_REFERRER], 4)
+  assert.equal(stats.referrers[''], 1)
+})
+
+test('a failing counter write does not break the redirect', async () => {
+  // Wrap the real store so only recordVisit blows up.
+  const inner = new FileStore(join(tmpdir(), `ikli-test-failing-${process.pid}.json`))
+  const failing: LinkStore = {
+    get: (s) => inner.get(s),
+    put: (l) => inner.put(l),
+    rename: (a, b) => inner.rename(a, b),
+    delete: (s) => inner.delete(s),
+    recordVisit: async () => {
+      throw new Error('simulated DynamoDB failure')
+    },
+  }
+  const app = createApp(failing)
+  const srv = await new Promise<Server>((resolve) => {
+    const h = app.listen(0, () => resolve(h))
+  })
+  const addr = srv.address()
+  if (addr === null || typeof addr === 'string') throw new Error('no port')
+  const url = `http://127.0.0.1:${addr.port}`
+  try {
+    const created = await (
+      await fetch(`${url}/api/links`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: 'https://example.com/still-works' }),
+      })
+    ).json()
+    const res = await fetch(`${url}/${created.slug}`, { redirect: 'manual' })
+    assert.equal(res.status, 302)
+    assert.equal(res.headers.get('location'), 'https://example.com/still-works')
+  } finally {
+    srv.close()
+  }
+})
+
+test('malformed slugs are rejected at the API boundary', async () => {
+  for (const bad of ['v%23abcd%23deadbeef', 'UPPER', 'ab', 'has_underscore', 'x'.repeat(33)]) {
+    const res = await fetch(`${base}/api/links/${bad}`)
+    assert.equal(res.status, 404, `expected 404 for ${bad}`)
+  }
 })
