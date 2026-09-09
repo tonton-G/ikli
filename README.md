@@ -12,7 +12,7 @@ This is a small, deliberately-scoped AWS portfolio project focused on EC2 fleet 
 
 - Paste a URL, get a short link — no signup, no login
 - Auto-generated edit key on creation (e.g. `tide-9042-plum`) — the only way back into a link
-- Vanity slug editing, expiration, and optional password protection
+- Vanity slug editing — rename a link after the fact without reissuing it
 - Public stats page at `ikli.to/<slug>+` — clicks, uniques, referrers, no auth required
 - Custom QR code generation as PNG/SVG, independent of the slug — six module patterns (incl. fluid, diamond, star), four eye styles, solid/gradient colors, background incl. transparent, center emoji or uploaded logo (with automatic error-correction bump), and frames with editable label text
 
@@ -59,20 +59,20 @@ This is a small, deliberately-scoped AWS portfolio project focused on EC2 fleet 
 | **S3 + CloudFront**                   | Hosts the static React build; bucket has Block Public Access on, reachable only via CloudFront (Origin Access Control)             |
 | **VPC Gateway Endpoint**              | Private route from the ASG to DynamoDB — no NAT Gateway, no public internet hop                                                    |
 | **Route 53**                          | Custom domain (`ikli.to`)                                                                                                          |
-| **IAM**                               | Instance role scoped to the single table ARN, actions limited to `GetItem`/`PutItem`/`UpdateItem` — no wildcard resource or action |
+| **IAM**                               | Instance role scoped to the single table ARN, actions limited to `GetItem`/`PutItem`/`UpdateItem`/`DeleteItem` — no wildcard resource or action |
 
 ## Tech stack
 
 **Frontend** — React 18, Vite, TypeScript, shadcn/ui (Radix primitives, restyled), Tailwind CSS v4, Caveat (display) + Geist Mono (data/UI)
 **Backend** — Node.js + Express (TypeScript), health check at `/healthz`
-**Storage** — `LinkStore` interface with a JSON-file implementation for local dev; the production implementation targets DynamoDB with the same contract
+**Storage** — one `LinkStore` interface with two implementations: a JSON file for local dev and tests, DynamoDB for production. Selected at startup by `LINKS_TABLE`; the server refuses to boot on the file store when `NODE_ENV=production`
 **Infra as code** — `<Terraform or CloudFormation — TBD>`
 
 ## Design decisions worth noting
 
 - **No auth, key-based recovery instead.** Trades account-recovery UX for zero signup friction. A lost key is unrecoverable by design — there's no "forgot key" flow, because there's no account to recover into.
 - **Slug and QR style are decoupled.** Restyling a QR code never changes the underlying slug, so a code already printed somewhere never breaks. The QR style is stored with the link and re-rendered from one SVG code path for preview, PNG, and SVG export.
-- **Stateless compute, stateful store.** The API tier holds no session or link data locally — required for the ASG to scale in/out without losing data or breaking in-flight requests. Edit keys are stored as SHA-256 hashes, passwords as salted scrypt.
+- **Stateless compute, stateful store.** The API tier holds no session or link data locally — required for the ASG to scale in/out without losing data or breaking in-flight requests. Edit keys are stored as SHA-256 hashes, never in plaintext.
 - **Immutable AMI over user-data bootstrapping.** New instances boot pre-configured rather than pulling code/config at startup — faster boot, and no drift between instances built at different times.
 
 ## Local development
@@ -109,10 +109,11 @@ npm run build     # typecheck + production builds for client and server
 - **Encryption at rest** — DynamoDB's default encryption (AWS owned key), no additional setup required.
 - **Static assets locked down** — S3 bucket has Block Public Access enabled; CloudFront reaches it via Origin Access Control, so the bucket has no public endpoint of its own.
 - **No SSH surface** — all instance access is via SSM Session Manager; port 22 is never opened.
-- **App-level** — edit keys never stored in plaintext (SHA-256), link passwords salted with scrypt, destination URLs restricted to http/https, and password-protected links never expose their destination through the public API.
-- **No silent redirects** — every visit (link or QR scan) lands on an interstitial that spells out the full destination and requires the visitor to press Continue. There is no setting to turn it off, so an ikli link can't be used to hide a phishing target behind a short URL.
+- **App-level** — edit keys are never stored in plaintext (SHA-256) and are compared in constant time; destination URLs are restricted to `http`/`https`, so a stored destination can never be a `javascript:` or `data:` URI.
 
 Explicitly out of scope for this project's size: WAF, GuardDuty, AWS Config, and a customer-managed KMS key. Reasonable additions for a production system, disproportionate for a portfolio timebox.
+
+**No interstitial warning page.** Every URL shortener can hide a destination, and a warning page doesn't close that gap: the visitor it targets clicks through, and anyone wanting a silent redirect uses a different service. The mitigations that actually work are conditional — warn only on URLs a reputation service like Safe Browsing or VirusTotal has flagged — or reactive: abuse reports plus takedown, which is how the large shorteners handle it. The first is a real third-party dependency rather than a checkbox, and is out of scope here. The second needs a way to disable a slug, which a keyless, admin-less model has no product surface for; takedown would be an operator action against the table. A universal warning page would have looked like a control without being one, so there isn't one.
 
 ---
 
