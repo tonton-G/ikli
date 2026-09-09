@@ -42,28 +42,29 @@ test('create returns slug, edit key, and default QR style', async () => {
   assert.match(link.slug, /^[a-z0-9]{4,5}$/)
   assert.match(link.editKey, /^[a-z]+-\d{4}-[a-z]+$/)
   assert.equal(link.qrStyle.pattern, 'square')
-  assert.equal(link.hasPassword, false)
 })
 
 test('bare domains get https:// prepended; garbage is rejected', async () => {
   const link = await createLink('example.org/x')
   assert.equal(link.longUrl, 'https://example.org/x')
 
-  const bad = await fetch(`${base}/api/links`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ url: 'not a url at all' }),
-  })
-  assert.equal(bad.status, 400)
+  for (const url of ['not a url at all', 'javascript:alert(1)', 'data:text/html,x']) {
+    const bad = await fetch(`${base}/api/links`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url }),
+    })
+    assert.equal(bad.status, 400, `should have rejected ${url}`)
+  }
 })
 
-test('visit shows the interstitial with the destination and records stats', async () => {
+test('visit redirects to the destination and records stats', async () => {
   const link = await createLink('https://example.com/target')
   const res = await fetch(`${base}/${link.slug}`, { redirect: 'manual' })
-  assert.equal(res.status, 200)
-  const html = await res.text()
-  assert.match(html, /You're about to visit example\.com/)
-  assert.match(html, /href="https:\/\/example\.com\/target"/)
+  assert.equal(res.status, 302)
+  assert.equal(res.headers.get('location'), 'https://example.com/target')
+  // A cached redirect would be an uncounted click.
+  assert.equal(res.headers.get('cache-control'), 'no-store')
 
   const stats = await (
     await fetch(`${base}/api/links/${link.slug}/stats`)
@@ -107,45 +108,13 @@ test('slug rename keeps the link reachable at the new slug only', async () => {
   assert.equal((await res.json()).slug, newSlug)
 
   const old = await fetch(`${base}/${link.slug}`, { redirect: 'manual' })
-  assert.equal(old.status, 404)
+  assert.equal(old.headers.get('location'), '/')
   const renamed = await fetch(`${base}/${newSlug}`, { redirect: 'manual' })
-  assert.equal(renamed.status, 200)
-})
-
-test('password-protected link serves a form, unlocks with the password', async () => {
-  const link = await createLink()
-  await fetch(`${base}/api/links/${link.slug}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ key: link.editKey, password: 'hunter2' }),
-  })
-
-  const gate = await fetch(`${base}/${link.slug}`, { redirect: 'manual' })
-  assert.equal(gate.status, 200)
-  assert.match(await gate.text(), /locked/)
-
-  const wrong = await fetch(`${base}/${link.slug}/unlock`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: 'password=nope',
-    redirect: 'manual',
-  })
-  assert.equal(wrong.status, 403)
-
-  const right = await fetch(`${base}/${link.slug}/unlock`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: 'password=hunter2',
-    redirect: 'manual',
-  })
-  assert.equal(right.status, 200)
-  assert.match(await right.text(), /You're about to visit example\.com/)
-})
-
-test('interstitial html-escapes the destination', async () => {
-  const link = await createLink('https://example.com/p?a=1&b=2')
-  const html = await (await fetch(`${base}/${link.slug}`)).text()
-  assert.match(html, /href="https:\/\/example\.com\/p\?a=1&amp;b=2"/)
+  assert.equal(renamed.status, 302)
+  assert.equal(
+    renamed.headers.get('location'),
+    'https://example.com/some/long/path',
+  )
 })
 
 test('qr style accepts new fields, normalizes old-shape payloads, rejects junk', async () => {
@@ -225,20 +194,6 @@ test('qr style accepts new fields, normalizes old-shape payloads, rejects junk',
   assert.equal(badSize.status, 400)
 })
 
-test('expired links return 410', async () => {
-  const link = await createLink()
-  await fetch(`${base}/api/links/${link.slug}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      key: link.editKey,
-      expiresAt: new Date(Date.now() - 1000).toISOString(),
-    }),
-  })
-  const res = await fetch(`${base}/${link.slug}`, { redirect: 'manual' })
-  assert.equal(res.status, 410)
-})
-
 test('delete removes the link', async () => {
   const link = await createLink()
   const res = await fetch(`${base}/api/links/${link.slug}`, {
@@ -248,5 +203,48 @@ test('delete removes the link', async () => {
   })
   assert.equal(res.status, 204)
   const gone = await fetch(`${base}/${link.slug}`, { redirect: 'manual' })
-  assert.equal(gone.status, 404)
+  assert.equal(gone.headers.get('location'), '/')
+})
+
+test('healthz answers for the load balancer and cannot be claimed as a slug', async () => {
+  const res = await fetch(`${base}/healthz`)
+  assert.equal(res.status, 200)
+  assert.deepEqual(await res.json(), { ok: true })
+
+  // Without the reservation this rename would shadow the health check and the
+  // target group would start failing.
+  const link = await createLink()
+  const taken = await fetch(`${base}/api/links/${link.slug}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ key: link.editKey, slug: 'healthz' }),
+  })
+  assert.equal(taken.status, 400)
+})
+
+test('concurrent visits are all counted, none lost', async () => {
+  const link = await createLink('https://example.com/busy')
+  const VISITS = 25
+
+  // Each distinct user-agent hashes to a distinct visitor, so this exercises
+  // the click counter, the day bucket and the unique set at the same time.
+  await Promise.all(
+    Array.from({ length: VISITS }, (_, i) =>
+      fetch(`${base}/${link.slug}`, {
+        redirect: 'manual',
+        headers: { 'user-agent': `probe-${i}` },
+      }),
+    ),
+  )
+
+  const stats = await (
+    await fetch(`${base}/api/links/${link.slug}/stats`)
+  ).json()
+  assert.equal(stats.clicks, VISITS)
+  assert.equal(stats.uniques, VISITS)
+  const perDay = Object.values(stats.clicksByDay as Record<string, number>)
+  assert.equal(
+    perDay.reduce((a, b) => a + b, 0),
+    VISITS,
+  )
 })
