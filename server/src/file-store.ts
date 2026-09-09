@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename as fsRename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { LinkRecord, LinkStore, Visit } from './types.js';
+import { OTHER_REFERRER, REFERRER_CAP, type LinkRecord, type LinkStore, type Visit } from './types.js';
 
 /**
  * Dev/test store: whole table as one JSON file, loaded once and rewritten on
@@ -9,6 +9,9 @@ import type { LinkRecord, LinkStore, Visit } from './types.js';
  */
 export class FileStore implements LinkStore {
   private links = new Map<string, LinkRecord>();
+  // Visitor markers are process-local: a dev restart forgets who has been
+  // seen, so uniques can re-count after one. Fine for a dev/test store.
+  private seen = new Map<string, Set<string>>();
   private loaded = false;
   private writing: Promise<void> = Promise.resolve();
 
@@ -67,14 +70,28 @@ export class FileStore implements LinkStore {
     // concurrent visits fold into the same object without losing counts.
     link.clicks += 1;
     link.clicksByDay[visit.day] = (link.clicksByDay[visit.day] ?? 0) + 1;
-    if (!link.visitorHashes.includes(visit.visitor)) link.visitorHashes.push(visit.visitor);
-    link.referrers[visit.referrer] = (link.referrers[visit.referrer] ?? 0) + 1;
+
+    let visitors = this.seen.get(slug);
+    if (!visitors) this.seen.set(slug, (visitors = new Set()));
+    if (!visitors.has(visit.visitor)) {
+      visitors.add(visit.visitor);
+      link.uniques = (link.uniques ?? 0) + 1;
+    }
+
+    // Same rule the DynamoDB store enforces with a size() condition: a host
+    // that is not already a key only gets one while the map has room.
+    const ref =
+      visit.referrer in link.referrers || Object.keys(link.referrers).length < REFERRER_CAP
+        ? visit.referrer
+        : OTHER_REFERRER;
+    link.referrers[ref] = (link.referrers[ref] ?? 0) + 1;
     await this.flush();
   }
 
   async delete(slug: string): Promise<void> {
     await this.load();
     this.links.delete(slug);
+    this.seen.delete(slug);
     await this.flush();
   }
 }
