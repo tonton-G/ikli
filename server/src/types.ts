@@ -47,10 +47,23 @@ export interface LinkRecord {
   createdAt: string; // ISO
   qrStyle: QrStyle;
   clicks: number;
+  /** Distinct visitors within UNIQUE_WINDOW_DAYS. Per-visitor markers live outside this record. */
+  uniques: number;
   clicksByDay: Record<string, number>; // YYYY-MM-DD -> count
-  visitorHashes: string[]; // for unique counting
-  referrers: Record<string, number>; // host -> count, '' = direct
+  referrers: Record<string, number>; // host -> count, '' = direct, OTHER_REFERRER = overflow
 }
+
+/**
+ * The referrer map is written from the Referer header on an unauthenticated
+ * path, so its key space has to be capped or anyone can grow the record until
+ * DynamoDB refuses every further write to it. The first REFERRER_CAP distinct
+ * hosts get their own key; everything after that folds into OTHER_REFERRER.
+ */
+export const REFERRER_CAP = 50;
+export const OTHER_REFERRER = '(other)';
+
+/** How long a visitor marker lives, and therefore what "unique" means. */
+export const UNIQUE_WINDOW_DAYS = 30;
 
 /** One visit to a short link, already reduced to the fields stats care about. */
 export interface Visit {
