@@ -7,13 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -24,14 +17,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-
-const EXPIRY_CHOICES = [
-  { value: 'never', label: 'never' },
-  { value: '1', label: '1 day' },
-  { value: '7', label: '7 days' },
-  { value: '30', label: '30 days' },
-  { value: '90', label: '90 days' },
-];
 
 export function LostKey() {
   const { slug = '' } = useParams();
@@ -114,9 +99,6 @@ export default function EditLink() {
 
   const [url, setUrl] = useState('');
   const [newSlug, setNewSlug] = useState(slug);
-  const [expiry, setExpiry] = useState('keep'); // 'keep' | 'never' | days as string
-  const [password, setPassword] = useState('');
-  const [hasPassword, setHasPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -125,8 +107,6 @@ export default function EditLink() {
     setKey(k);
     setUrl(l.longUrl);
     setNewSlug(l.slug);
-    setHasPassword(l.hasPassword);
-    setExpiry(l.expiresAt ? 'keep' : 'never');
   }
 
   // Try the key remembered from creation/unlock in this session.
@@ -150,11 +130,6 @@ export default function EditLink() {
     try {
       const changes: Parameters<typeof api.update>[2] = { url };
       if (newSlug !== link.slug) changes.slug = newSlug.trim().toLowerCase();
-      if (expiry === 'never' && link.expiresAt) changes.expiresAt = null;
-      if (expiry !== 'keep' && expiry !== 'never') {
-        changes.expiresAt = new Date(Date.now() + Number(expiry) * 86_400_000).toISOString();
-      }
-      if (password) changes.password = password;
       const updated = await api.update(link.slug, key, changes);
       if (updated.slug !== link.slug) moveKey(link.slug, updated.slug);
       navigate(`/${updated.slug}/done`);
@@ -205,55 +180,6 @@ export default function EditLink() {
           className="font-display text-xl"
         />
       </div>
-
-      <div className="mb-10 grid gap-5 sm:grid-cols-2">
-        <div className="flex items-center justify-between gap-3 rounded-2xl border-[1.5px] border-dashed border-muted px-5 py-3.5">
-          <Label htmlFor="expires">expires</Label>
-          <Select value={expiry} onValueChange={setExpiry}>
-            <SelectTrigger id="expires" aria-label="Expires">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              {link.expiresAt && (
-                <SelectItem value="keep">{new Date(link.expiresAt).toLocaleDateString()}</SelectItem>
-              )}
-              {EXPIRY_CHOICES.map((c) => (
-                <SelectItem key={c.value} value={c.value}>
-                  {c.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center justify-between gap-3 rounded-2xl border-[1.5px] border-dashed border-muted px-5 py-3.5">
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="password"
-            aria-label="Password"
-            className="w-full bg-paper font-mono text-sm outline-none placeholder:text-muted"
-          />
-          <span className="shrink-0 font-mono text-sm text-muted">
-            {password ? 'set on save' : hasPassword ? 'on' : 'off'}
-          </span>
-        </div>
-      </div>
-
-      {hasPassword && (
-        <button
-          type="button"
-          onClick={async () => {
-            await api.update(link.slug, key, { password: null });
-            setHasPassword(false);
-            setPassword('');
-          }}
-          className="-mt-6 mb-8 cursor-pointer self-start font-mono text-xs text-muted underline hover:text-ink"
-        >
-          remove password
-        </button>
-      )}
 
       {error && <p className="mb-6 font-mono text-sm text-danger">{error}</p>}
 
