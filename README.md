@@ -64,7 +64,7 @@ This is a small, deliberately-scoped AWS portfolio project focused on EC2 fleet 
 ## Tech stack
 
 **Frontend** — React 18, Vite, TypeScript, shadcn/ui (Radix primitives, restyled), Tailwind CSS v4, Caveat (display) + Geist Mono (data/UI)
-**Backend** — Node.js + Express (TypeScript), health check at `/api/health`
+**Backend** — Node.js + Express (TypeScript), health check at `/healthz`
 **Storage** — `LinkStore` interface with a JSON-file implementation for local dev; the production implementation targets DynamoDB with the same contract
 **Infra as code** — `<Terraform or CloudFormation — TBD>`
 
