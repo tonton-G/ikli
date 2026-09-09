@@ -64,6 +64,14 @@ function publicView(link: LinkRecord) {
 export function createApiRouter(store: LinkStore): Router {
   const router = Router();
 
+  // The table also holds non-link items under keys no valid slug can produce.
+  // Rejecting malformed slugs here keeps those keys unreachable from the API
+  // and spares the store a lookup that can only miss.
+  router.param('slug', (req, res, next, slug) => {
+    if (!SLUG_RE.test(slug)) return res.status(404).json({ error: 'not_found' });
+    next();
+  });
+
   // Loads the link and verifies the edit key from the request body.
   async function authed(req: any, res: any): Promise<LinkRecord | null> {
     const link = await store.get(req.params.slug);
@@ -97,8 +105,8 @@ export function createApiRouter(store: LinkStore): Router {
       createdAt: new Date().toISOString(),
       qrStyle: { ...DEFAULT_QR_STYLE },
       clicks: 0,
+      uniques: 0,
       clicksByDay: {},
-      visitorHashes: [],
       referrers: {},
     };
     await store.put(link);
@@ -119,7 +127,7 @@ export function createApiRouter(store: LinkStore): Router {
       slug: link.slug,
       createdAt: link.createdAt,
       clicks: link.clicks,
-      uniques: link.visitorHashes.length,
+      uniques: link.uniques ?? 0,
       clicksByDay: link.clicksByDay,
       referrers: link.referrers,
     });
