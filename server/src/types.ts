@@ -45,13 +45,18 @@ export interface LinkRecord {
   longUrl: string;
   editKeyHash: string;
   createdAt: string; // ISO
-  expiresAt: string | null; // ISO
-  passwordHash: string | null; // scrypt "salt:hash"
   qrStyle: QrStyle;
   clicks: number;
   clicksByDay: Record<string, number>; // YYYY-MM-DD -> count
   visitorHashes: string[]; // for unique counting
   referrers: Record<string, number>; // host -> count, '' = direct
+}
+
+/** One visit to a short link, already reduced to the fields stats care about. */
+export interface Visit {
+  day: string; // YYYY-MM-DD bucket the click belongs to
+  visitor: string; // opaque per-visitor hash, only ever compared for equality
+  referrer: string; // referring host, '' for direct
 }
 
 export interface LinkStore {
@@ -60,4 +65,10 @@ export interface LinkStore {
   /** Atomically move a record to a new slug. Returns false if newSlug is taken. */
   rename(oldSlug: string, newSlug: string): Promise<boolean>;
   delete(slug: string): Promise<void>;
+  /**
+   * Fold one visit into the stored counters atomically. Implementations must not
+   * read-modify-write the record: visits arrive concurrently across instances and
+   * every one of them has to be counted.
+   */
+  recordVisit(slug: string, visit: Visit): Promise<void>;
 }
