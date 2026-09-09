@@ -65,7 +65,6 @@ export function createApiRouter(store: LinkStore): Router {
   const router = Router();
 
   // The table also holds non-link items under keys no valid slug can produce.
-  // Rejecting malformed slugs here keeps those keys unreachable from the API
   // and spares the store a lookup that can only miss.
   router.param('slug', (req, res, next, slug) => {
     if (!SLUG_RE.test(slug)) return res.status(404).json({ error: 'not_found' });
