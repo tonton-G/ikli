@@ -17,8 +17,6 @@ export interface LinkPublic {
   slug: string
   longUrl: string
   createdAt: string
-  expiresAt: string | null
-  hasPassword: boolean
   qrStyle: QrStyle
 }
 
@@ -84,8 +82,6 @@ export const api = {
     changes: Partial<{
       url: string
       slug: string
-      expiresAt: string | null
-      password: string | null
       qrStyle: QrStyle
     }>,
   ) =>
