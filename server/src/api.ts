@@ -1,11 +1,5 @@
 import { Router } from 'express';
-import {
-  generateEditKey,
-  generateSlug,
-  hashEditKey,
-  hashPassword,
-  verifyEditKey,
-} from './keys.js';
+import { generateEditKey, generateSlug, hashEditKey, verifyEditKey } from './keys.js';
 import {
   DEFAULT_QR_STYLE,
   withQrDefaults,
@@ -15,7 +9,7 @@ import {
 } from './types.js';
 
 const SLUG_RE = /^[a-z0-9-]{3,32}$/;
-const RESERVED_SLUGS = new Set(['api', 'edit', 'stats', 'assets']);
+const RESERVED_SLUGS = new Set(['api', 'edit', 'stats', 'assets', 'healthz']);
 
 function normalizeUrl(input: unknown): string | null {
   if (typeof input !== 'string' || input.length > 2048) return null;
@@ -63,8 +57,6 @@ function publicView(link: LinkRecord) {
     slug: link.slug,
     longUrl: link.longUrl,
     createdAt: link.createdAt,
-    expiresAt: link.expiresAt,
-    hasPassword: link.passwordHash !== null,
     qrStyle: withQrDefaults(link.qrStyle),
   };
 }
@@ -103,8 +95,6 @@ export function createApiRouter(store: LinkStore): Router {
       longUrl,
       editKeyHash: hashEditKey(editKey),
       createdAt: new Date().toISOString(),
-      expiresAt: null,
-      passwordHash: null,
       qrStyle: { ...DEFAULT_QR_STYLE },
       clicks: 0,
       clicksByDay: {},
@@ -115,13 +105,11 @@ export function createApiRouter(store: LinkStore): Router {
     res.status(201).json({ ...publicView(link), editKey });
   });
 
-  // Public metadata (QR style, expiry, age). The destination is only included
-  // for links without a password — a password gate must not leak the target.
+  // Public metadata: destination, QR style, age.
   router.get('/links/:slug', async (req, res) => {
     const link = await store.get(req.params.slug);
     if (!link) return res.status(404).json({ error: 'not_found' });
-    const view = publicView(link);
-    res.json(link.passwordHash ? { ...view, longUrl: null } : view);
+    res.json(publicView(link));
   });
 
   router.get('/links/:slug/stats', async (req, res) => {
@@ -152,26 +140,6 @@ export function createApiRouter(store: LinkStore): Router {
       const longUrl = normalizeUrl(body.url);
       if (!longUrl) return res.status(400).json({ error: 'invalid_url' });
       link.longUrl = longUrl;
-    }
-
-    if (body.expiresAt !== undefined) {
-      if (body.expiresAt === null) {
-        link.expiresAt = null;
-      } else {
-        const ts = Date.parse(body.expiresAt);
-        if (Number.isNaN(ts)) return res.status(400).json({ error: 'invalid_expiry' });
-        link.expiresAt = new Date(ts).toISOString();
-      }
-    }
-
-    if (body.password !== undefined) {
-      if (body.password === null || body.password === '') {
-        link.passwordHash = null;
-      } else if (typeof body.password === 'string' && body.password.length <= 128) {
-        link.passwordHash = hashPassword(body.password);
-      } else {
-        return res.status(400).json({ error: 'invalid_password' });
-      }
     }
 
     if (body.qrStyle !== undefined) {
