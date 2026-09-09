@@ -4,23 +4,23 @@ import { FileStore } from './file-store.js'
 import type { LinkStore } from './types.js'
 
 const PORT = Number(process.env.PORT ?? 3001)
-const LINKS_TABLE = process.env.LINKS_TABLE
+const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE
 
 
 // important on asg
 // links, and scale-in destroys whatever the terminated instance was holding.
 // Fail to boot rather than let that configuration reach production.
-if (!LINKS_TABLE && process.env.NODE_ENV === 'production') {
+if (!DYNAMODB_TABLE && process.env.NODE_ENV === 'production') {
   console.error(
-    'LINKS_TABLE is not set. Refusing to start on the file store in production.',
+    'DYNAMODB_TABLE is not set. Refusing to start on the file store in production.',
   )
   process.exit(1)
 }
 
 let store: LinkStore
-if (LINKS_TABLE) {
-  store = new DynamoDbStore(LINKS_TABLE)
-  console.log(`ikli store: DynamoDB table "${LINKS_TABLE}"`)
+if (DYNAMODB_TABLE) {
+  store = new DynamoDbStore(DYNAMODB_TABLE)
+  console.log(`ikli store: DynamoDB table "${DYNAMODB_TABLE}"`)
 } else {
   const dataFile =
     process.env.DATA_FILE ?? new URL('../data/links.json', import.meta.url).pathname
