@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomInt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 
 // Short, common words keep keys typeable; entropy comes from the combination
 // (140 * 10000 * 140 ≈ 2^27) plus the slug they're scoped to.
@@ -40,20 +40,6 @@ export function hashEditKey(key: string): string {
 
 export function verifyEditKey(key: string, hash: string): boolean {
   const a = Buffer.from(hashEditKey(key), 'hex');
-  const b = Buffer.from(hash, 'hex');
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(password, salt, 32).toString('hex');
-  return `${salt}:${hash}`;
-}
-
-export function verifyPassword(password: string, stored: string): boolean {
-  const [salt, hash] = stored.split(':');
-  if (!salt || !hash) return false;
-  const a = scryptSync(password, salt, 32);
   const b = Buffer.from(hash, 'hex');
   return a.length === b.length && timingSafeEqual(a, b);
 }
