@@ -7,9 +7,10 @@ export function createApp(store: LinkStore): Express {
   const app = express();
   app.set('trust proxy', true);
   app.use(express.json({ limit: '256kb' })); // headroom for QR logo data URIs
-  app.use(express.urlencoded({ extended: false }));
 
-  app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  // Load balancer target-group health check. Outside /api so it stays
+  // independent of how API traffic is routed.
+  app.get('/healthz', (_req, res) => res.json({ ok: true }));
   app.use('/api', createApiRouter(store));
   app.use('/', createRedirectRouter(store));
 
