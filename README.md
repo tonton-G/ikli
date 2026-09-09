@@ -53,7 +53,7 @@ This is a small, deliberately-scoped AWS portfolio project focused on EC2 fleet 
 | **EC2 + Auto Scaling Group**          | API tier, stateless, spans 2 AZs, scales on CloudWatch alarms                                                                      |
 | **EC2 Image Builder / Packer**        | Bakes a golden AMI (app + runtime pre-installed) — no config-on-boot                                                               |
 | **Application Load Balancer**         | Routes `/api/*` traffic to the ASG, health-checks instances                                                                        |
-| **DynamoDB**                          | Single-table store (`slug`, `longUrl`, `clicks`, `editKeyHash`) — keeps the EC2 tier stateless so scaling in/out is safe           |
+| **DynamoDB**                          | One table, exact-key access only: link records by slug, per-visitor markers by `v#<slug>#<hash>` with a TTL. No sort key, no GSI. Keeps the EC2 tier stateless so scaling in/out is safe |
 | **CloudWatch**                        | Scaling-policy alarms (CPU / request count), dashboards                                                                            |
 | **Systems Manager (Session Manager)** | Instance access without a bastion host or open port 22                                                                             |
 | **S3 + CloudFront**                   | Hosts the static React build; bucket has Block Public Access on, reachable only via CloudFront (Origin Access Control)             |
@@ -65,7 +65,7 @@ This is a small, deliberately-scoped AWS portfolio project focused on EC2 fleet 
 
 **Frontend** — React 18, Vite, TypeScript, shadcn/ui (Radix primitives, restyled), Tailwind CSS v4, Caveat (display) + Geist Mono (data/UI)
 **Backend** — Node.js + Express (TypeScript), health check at `/healthz`
-**Storage** — one `LinkStore` interface with two implementations: a JSON file for local dev and tests, DynamoDB for production. Selected at startup by `LINKS_TABLE`; the server refuses to boot on the file store when `NODE_ENV=production`
+**Storage** — one `LinkStore` interface with two implementations: a JSON file for local dev and tests, DynamoDB for production. Selected at startup by `DYNAMODB_TABLE`; the server refuses to boot on the file store when `NODE_ENV=production`
 **Infra as code** — `<Terraform or CloudFormation — TBD>`
 
 ## Design decisions worth noting
@@ -74,6 +74,9 @@ This is a small, deliberately-scoped AWS portfolio project focused on EC2 fleet 
 - **Slug and QR style are decoupled.** Restyling a QR code never changes the underlying slug, so a code already printed somewhere never breaks. The QR style is stored with the link and re-rendered from one SVG code path for preview, PNG, and SVG export.
 - **Stateless compute, stateful store.** The API tier holds no session or link data locally — required for the ASG to scale in/out without losing data or breaking in-flight requests. Edit keys are stored as SHA-256 hashes, never in plaintext.
 - **Immutable AMI over user-data bootstrapping.** New instances boot pre-configured rather than pulling code/config at startup — faster boot, and no drift between instances built at different times.
+- **The link record has a fixed maximum size.** Redirects are unauthenticated, and two of the stats fields are derived from request headers a visitor controls (`Referer`, `User-Agent`). Left unbounded, either one lets anyone grow a record until DynamoDB's 400 KB item limit refuses every further write to it, including the owner's edits: the link is bricked and the edit key can't help, because repairing is also a write. So the referrer map is capped at 50 distinct hosts, enforced with a `size()` condition on the update so racing instances can't overshoot it, with everything past the cap folded into one `(other)` bucket; and uniques is a plain integer, bumped only when a conditional put of a per-visitor marker succeeds. Markers live in the same table under a key no slug can produce and expire after 30 days, so "unique" means unique within a rolling month. The per-day map is the one field that still grows, by one small key per day from the server's clock, which a visitor can't influence.
+- **Single table by necessity, not fashion.** Every access is a get, put, update or delete on a key the app already holds. There is no query, so there is no sort key and no secondary index to design or pay for. The rate-limit counters that would close the remaining cost vector (many cheap marker writes) fit the same shape.
+- **Stats are best-effort; the redirect is not.** The counter write happens before the redirect but its failure is logged and swallowed. A throttled table, a transient error or a full record costs one data point, never the link.
 
 ## Local development
 
@@ -88,6 +91,7 @@ npm run dev
 - API + redirects on `http://localhost:3001` — short links resolve at `http://localhost:3001/<slug>`
 - Public stats at `http://localhost:5173/<slug>+`, editing at `/<slug>/edit`
 - Dev data persists to `server/data/links.json` (gitignored)
+- To run the API against a real table locally, export `DYNAMODB_TABLE=<name>` and `AWS_REGION=<region>`. The SDK resolves region from the environment; on EC2 that comes from instance metadata, but locally an unset region surfaces as a misleading credentials error
 
 ```bash
 npm test          # backend integration tests (node:test, real HTTP against the app)
@@ -109,9 +113,12 @@ npm run build     # typecheck + production builds for client and server
 - **Encryption at rest** — DynamoDB's default encryption (AWS owned key), no additional setup required.
 - **Static assets locked down** — S3 bucket has Block Public Access enabled; CloudFront reaches it via Origin Access Control, so the bucket has no public endpoint of its own.
 - **No SSH surface** — all instance access is via SSM Session Manager; port 22 is never opened.
-- **App-level** — edit keys are never stored in plaintext (SHA-256) and are compared in constant time; destination URLs are restricted to `http`/`https`, so a stored destination can never be a `javascript:` or `data:` URI.
+- **App-level** — edit keys are never stored in plaintext (SHA-256) and are compared in constant time; destination URLs are restricted to `http`/`https`, so a stored destination can never be a `javascript:` or `data:` URI; slugs are validated at the API boundary so non-link keys in the table are unreachable from it.
+- **No write amplification from the redirect path** — see *The link record has a fixed maximum size* above. Header-derived stats fields are capped in key space, not just in request rate, so no volume of anonymous traffic can make a link unwritable.
 
 Explicitly out of scope for this project's size: WAF, GuardDuty, AWS Config, and a customer-managed KMS key. Reasonable additions for a production system, disproportionate for a portfolio timebox.
+
+**Known limitations, chosen rather than overlooked.** Slug rename reads the record and then moves it in a transaction; a visit that lands in that window increments the old item and is deleted with it, so the counter can regress by a few under load. Renames are rare and owner-initiated, and closing this needs optimistic concurrency on a path nobody races, so it is documented instead. Visitor markers are keyed by slug, so for 30 days after a rename returning visitors count as new again, and markers for a deleted link linger until the TTL sweeps them. The per-visitor marker design also turns the old bricking attack into a cost attack: many unique `User-Agent` values mean many cheap marker writes. Per-IP rate limiting, not yet built, is the mitigation for that.
 
 **No interstitial warning page.** Every URL shortener can hide a destination, and a warning page doesn't close that gap: the visitor it targets clicks through, and anyone wanting a silent redirect uses a different service. The mitigations that actually work are conditional — warn only on URLs a reputation service like Safe Browsing or VirusTotal has flagged — or reactive: abuse reports plus takedown, which is how the large shorteners handle it. The first is a real third-party dependency rather than a checkbox, and is out of scope here. The second needs a way to disable a slug, which a keyless, admin-less model has no product surface for; takedown would be an operator action against the table. A universal warning page would have looked like a control without being one, so there isn't one.
 
