@@ -7,7 +7,14 @@ import {
   TransactWriteCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
-import type { LinkRecord, LinkStore, Visit } from './types.js';
+import {
+  OTHER_REFERRER,
+  REFERRER_CAP,
+  UNIQUE_WINDOW_DAYS,
+  type LinkRecord,
+  type LinkStore,
+  type Visit,
+} from './types.js';
 
 /**
  * Direct traffic is keyed by '' in LinkRecord.referrers, but an empty string
@@ -19,27 +26,38 @@ const storeRef = (host: string): string => (host === '' ? DIRECT_KEY : host);
 const loadRef = (host: string): string => (host === DIRECT_KEY ? '' : host);
 
 /**
- * visitorHashes is a DynamoDB string set rather than a list so that ADD can
- * union a new visitor in atomically. Sets can't be empty, so a link with no
- * visitors simply has no such attribute.
+ * Per-visitor markers share the table with links, keyed under a prefix no real
+ * slug can produce ('#' is outside the slug alphabet). Each carries an epoch
+ * expiry the table's TTL sweeps up, so the link record itself never grows with
+ * traffic: uniques is a plain integer on it, bumped only when a marker is new.
+ */
+const visitorKey = (slug: string, visitor: string): string => `v#${slug}#${visitor}`;
+export const TTL_ATTRIBUTE = 'expiresAt';
+
+/**
+ * clicksByDay and referrers must always be present as maps: the update
+ * expression addresses paths inside them, and DynamoDB rejects a path into a
+ * missing parent with a ValidationException rather than a condition failure.
+ * Initialising both here unconditionally is what keeps that invariant true.
  */
 function toItem(link: LinkRecord): Record<string, unknown> {
-  const { visitorHashes, referrers, ...rest } = link;
-  const item: Record<string, unknown> = {
+  const { referrers, clicksByDay, uniques, ...rest } = link;
+  return {
     ...rest,
+    uniques: uniques ?? 0,
+    clicksByDay: clicksByDay ?? {},
     referrers: Object.fromEntries(
-      Object.entries(referrers).map(([host, n]) => [storeRef(host), n]),
+      Object.entries(referrers ?? {}).map(([host, n]) => [storeRef(host), n]),
     ),
   };
-  if (visitorHashes.length > 0) item.visitorHashes = new Set(visitorHashes);
-  return item;
 }
 
 function fromItem(item: Record<string, any>): LinkRecord {
-  const { visitorHashes, referrers, ...rest } = item;
+  const { referrers, ...rest } = item;
   return {
     ...rest,
-    visitorHashes: visitorHashes ? [...(visitorHashes as Set<string>)] : [],
+    uniques: item.uniques ?? 0,
+    clicksByDay: item.clicksByDay ?? {},
     referrers: Object.fromEntries(
       Object.entries((referrers ?? {}) as Record<string, number>).map(([host, n]) => [
         loadRef(host),
@@ -69,7 +87,9 @@ export class DynamoDbStore implements LinkStore {
     const res = await this.doc.send(
       new GetCommand({ TableName: this.table, Key: { slug } }),
     );
-    return res.Item ? fromItem(res.Item) : null;
+    // A visitor marker or any other non-link item at this key is not a link.
+    if (!res.Item || typeof res.Item.longUrl !== 'string') return null;
+    return fromItem(res.Item);
   }
 
   async put(link: LinkRecord): Promise<void> {
@@ -78,6 +98,12 @@ export class DynamoDbStore implements LinkStore {
     );
   }
 
+  /**
+   * Known limitation: the read is not part of the transaction, so a visit that
+   * lands between get() and the write increments the old item and is then
+   * deleted with it. Renames are rare and owner-initiated; this is documented
+   * rather than closed with optimistic concurrency.
+   */
   async rename(oldSlug: string, newSlug: string): Promise<boolean> {
     const link = await this.get(oldSlug);
     if (!link) return false;
@@ -112,39 +138,77 @@ export class DynamoDbStore implements LinkStore {
   }
 
   async delete(slug: string): Promise<void> {
+    // Visitor markers for this slug are left to the TTL sweep.
     await this.doc.send(
       new DeleteCommand({ TableName: this.table, Key: { slug } }),
     );
   }
 
   async recordVisit(slug: string, visit: Visit): Promise<void> {
+    const isNew = await this.markVisitor(slug, visit.visitor);
+
+    // First attempt: the referrer gets its own key only if it already has one
+    // or the map still has room. size() makes the cap a server-side invariant
+    // rather than something a racing pair of instances could overshoot.
+    const applied = await this.bumpCounters(slug, visit, isNew, storeRef(visit.referrer), true);
+    if (applied) return;
+
+    // Either the map is full or the link is gone. Fold into the overflow bucket
+    // and drop the size check; if this fails too, the link no longer exists.
+    await this.bumpCounters(slug, visit, isNew, OTHER_REFERRER, false);
+  }
+
+  /** Conditional put of the visitor marker. True if this visitor is new in the window. */
+  private async markVisitor(slug: string, visitor: string): Promise<boolean> {
     try {
-      // One round trip, no read first: ADD and if_not_exists let DynamoDB fold
-      // the counters server-side, so simultaneous visits on different instances
-      // can't overwrite each other's increments.
+      await this.doc.send(
+        new PutCommand({
+          TableName: this.table,
+          Item: {
+            slug: visitorKey(slug, visitor),
+            [TTL_ATTRIBUTE]: Math.floor(Date.now() / 1000) + UNIQUE_WINDOW_DAYS * 86_400,
+          },
+          ConditionExpression: 'attribute_not_exists(slug)',
+        }),
+      );
+      return true;
+    } catch (err: any) {
+      if (err?.name === 'ConditionalCheckFailedException') return false;
+      throw err;
+    }
+  }
+
+  /** One UpdateItem folding the visit in. Returns false only on a condition failure. */
+  private async bumpCounters(
+    slug: string,
+    visit: Visit,
+    isNew: boolean,
+    refKey: string,
+    enforceCap: boolean,
+  ): Promise<boolean> {
+    try {
       await this.doc.send(
         new UpdateCommand({
           TableName: this.table,
           Key: { slug },
           UpdateExpression:
-            'ADD clicks :one, visitorHashes :visitor ' +
+            `ADD clicks :one${isNew ? ', uniques :one' : ''} ` +
             'SET clicksByDay.#day = if_not_exists(clicksByDay.#day, :zero) + :one, ' +
             'referrers.#ref = if_not_exists(referrers.#ref, :zero) + :one',
-          ConditionExpression: 'attribute_exists(slug)',
-          ExpressionAttributeNames: {
-            '#day': visit.day,
-            '#ref': storeRef(visit.referrer),
-          },
+          ConditionExpression: enforceCap
+            ? 'attribute_exists(slug) AND (attribute_exists(referrers.#ref) OR size(referrers) < :cap)'
+            : 'attribute_exists(slug)',
+          ExpressionAttributeNames: { '#day': visit.day, '#ref': refKey },
           ExpressionAttributeValues: {
             ':one': 1,
             ':zero': 0,
-            ':visitor': new Set([visit.visitor]),
+            ...(enforceCap ? { ':cap': REFERRER_CAP } : {}),
           },
         }),
       );
+      return true;
     } catch (err: any) {
-      // Link deleted between the lookup and this write: nothing left to count.
-      if (err?.name === 'ConditionalCheckFailedException') return;
+      if (err?.name === 'ConditionalCheckFailedException') return false;
       throw err;
     }
   }
