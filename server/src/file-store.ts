@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename as fsRename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { LinkRecord, LinkStore } from './types.js';
+import type { LinkRecord, LinkStore, Visit } from './types.js';
 
 /**
  * Dev/test store: whole table as one JSON file, loaded once and rewritten on
@@ -57,6 +57,19 @@ export class FileStore implements LinkStore {
     this.links.set(newSlug, { ...link, slug: newSlug });
     await this.flush();
     return true;
+  }
+
+  async recordVisit(slug: string, visit: Visit): Promise<void> {
+    await this.load();
+    const link = this.links.get(slug);
+    if (!link) return;
+    // Single process, single map entry: every mutation below is synchronous, so
+    // concurrent visits fold into the same object without losing counts.
+    link.clicks += 1;
+    link.clicksByDay[visit.day] = (link.clicksByDay[visit.day] ?? 0) + 1;
+    if (!link.visitorHashes.includes(visit.visitor)) link.visitorHashes.push(visit.visitor);
+    link.referrers[visit.referrer] = (link.referrers[visit.referrer] ?? 0) + 1;
+    await this.flush();
   }
 
   async delete(slug: string): Promise<void> {
