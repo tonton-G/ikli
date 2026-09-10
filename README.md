@@ -13,14 +13,14 @@ This is a small, deliberately-scoped AWS portfolio project focused on EC2 fleet 
 - Paste a URL, get a short link — no signup, no login
 - Auto-generated edit key on creation (e.g. `tide-9042-plum`) — the only way back into a link
 - Vanity slug editing — rename a link after the fact without reissuing it
-- Public stats page at `ikli.to/<slug>+` — clicks, uniques, referrers, no auth required
+- Public stats page at `ikli.fyi/<slug>+` — clicks, uniques, referrers, no auth required
 - Custom QR code generation as PNG/SVG, independent of the slug — six module patterns (incl. fluid, diamond, star), four eye styles, solid/gradient colors, background incl. transparent, center emoji or uploaded logo (with automatic error-correction bump), and frames with editable label text
 
 ## Architecture
 
 ```
                          ┌─────────────┐
-                         │  Route 53   │  (ikli.to)
+                         │  Route 53   │  (ikli.fyi)
                          └──────┬──────┘
                                 │
                          ┌──────▼──────┐
@@ -48,18 +48,18 @@ This is a small, deliberately-scoped AWS portfolio project focused on EC2 fleet 
 
 ### AWS services
 
-| Service                               | Role                                                                                                                               |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| **EC2 + Auto Scaling Group**          | API tier, stateless, spans 2 AZs, scales on CloudWatch alarms                                                                      |
-| **EC2 Image Builder / Packer**        | Bakes a golden AMI (app + runtime pre-installed) — no config-on-boot                                                               |
-| **Application Load Balancer**         | Routes `/api/*` traffic to the ASG, health-checks instances                                                                        |
+| Service                               | Role                                                                                                                                                                                     |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **EC2 + Auto Scaling Group**          | API tier, stateless, spans 2 AZs, scales on CloudWatch alarms                                                                                                                            |
+| **EC2 Image Builder / Packer**        | Bakes a golden AMI (app + runtime pre-installed) — no config-on-boot                                                                                                                     |
+| **Application Load Balancer**         | Routes `/api/*` traffic to the ASG, health-checks instances                                                                                                                              |
 | **DynamoDB**                          | One table, exact-key access only: link records by slug, per-visitor markers by `v#<slug>#<hash>` with a TTL. No sort key, no GSI. Keeps the EC2 tier stateless so scaling in/out is safe |
-| **CloudWatch**                        | Scaling-policy alarms (CPU / request count), dashboards                                                                            |
-| **Systems Manager (Session Manager)** | Instance access without a bastion host or open port 22                                                                             |
-| **S3 + CloudFront**                   | Hosts the static React build; bucket has Block Public Access on, reachable only via CloudFront (Origin Access Control)             |
-| **VPC Gateway Endpoint**              | Private route from the ASG to DynamoDB — no NAT Gateway, no public internet hop                                                    |
-| **Route 53**                          | Custom domain (`ikli.to`)                                                                                                          |
-| **IAM**                               | Instance role scoped to the single table ARN, actions limited to `GetItem`/`PutItem`/`UpdateItem`/`DeleteItem` — no wildcard resource or action |
+| **CloudWatch**                        | Scaling-policy alarms (CPU / request count), dashboards                                                                                                                                  |
+| **Systems Manager (Session Manager)** | Instance access without a bastion host or open port 22                                                                                                                                   |
+| **S3 + CloudFront**                   | Hosts the static React build; bucket has Block Public Access on, reachable only via CloudFront (Origin Access Control)                                                                   |
+| **VPC Gateway Endpoint**              | Private route from the ASG to DynamoDB — no NAT Gateway, no public internet hop                                                                                                          |
+| **Route 53**                          | Custom domain (`ikli.fyi`)                                                                                                                                                               |
+| **IAM**                               | Instance role scoped to the single table ARN, actions limited to `GetItem`/`PutItem`/`UpdateItem`/`DeleteItem` — no wildcard resource or action                                          |
 
 ## Tech stack
 
@@ -114,7 +114,7 @@ npm run build     # typecheck + production builds for client and server
 - **Static assets locked down** — S3 bucket has Block Public Access enabled; CloudFront reaches it via Origin Access Control, so the bucket has no public endpoint of its own.
 - **No SSH surface** — all instance access is via SSM Session Manager; port 22 is never opened.
 - **App-level** — edit keys are never stored in plaintext (SHA-256) and are compared in constant time; destination URLs are restricted to `http`/`https`, so a stored destination can never be a `javascript:` or `data:` URI; slugs are validated at the API boundary so non-link keys in the table are unreachable from it.
-- **No write amplification from the redirect path** — see *The link record has a fixed maximum size* above. Header-derived stats fields are capped in key space, not just in request rate, so no volume of anonymous traffic can make a link unwritable.
+- **No write amplification from the redirect path** — see _The link record has a fixed maximum size_ above. Header-derived stats fields are capped in key space, not just in request rate, so no volume of anonymous traffic can make a link unwritable.
 
 Explicitly out of scope for this project's size: WAF, GuardDuty, AWS Config, and a customer-managed KMS key. Reasonable additions for a production system, disproportionate for a portfolio timebox.
 
