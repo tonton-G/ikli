@@ -1,0 +1,3 @@
+aws_region  = "<AWS_REGION>"   
+project     = "<PROJECT_NAME>"  
+domain_name = "<YOUR_DOMAIN>"   
