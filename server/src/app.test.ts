@@ -214,20 +214,19 @@ test('delete removes the link', async () => {
   assert.equal(gone.headers.get('location'), '/')
 })
 
-test('healthz answers for the load balancer and cannot be claimed as a slug', async () => {
-  const res = await fetch(`${base}/healthz`)
+test('the load balancer health check answers at /api/health', async () => {
+  const res = await fetch(`${base}/api/health`)
   assert.equal(res.status, 200)
   assert.deepEqual(await res.json(), { ok: true })
 
-  // Without the reservation this rename would shadow the health check and the
-  // target group would start failing.
+  // No longer reserved: the health check moved off this single-segment path.
   const link = await createLink()
-  const taken = await fetch(`${base}/api/links/${link.slug}`, {
+  const renamed = await fetch(`${base}/api/links/${link.slug}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ key: link.editKey, slug: 'healthz' }),
   })
-  assert.equal(taken.status, 400)
+  assert.equal(renamed.status, 200)
 })
 
 test('concurrent visits are all counted, none lost', async () => {
