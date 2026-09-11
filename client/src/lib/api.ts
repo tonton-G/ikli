@@ -17,6 +17,8 @@ export interface LinkPublic {
   slug: string
   longUrl: string
   createdAt: string
+  /** Minted by the server from its configured BASE_URL — never composed here. */
+  shortUrl: string
   qrStyle: QrStyle
 }
 
@@ -97,9 +99,31 @@ export const api = {
     }),
 }
 
-/** Base used for displaying/copying short URLs. In dev the redirect lives on the API server. */
-export const SHORT_BASE_DISPLAY = 'ikli.com'
-export function shortUrlFor(slug: string): string {
+/**
+ * The server returns shortUrl on every link response, built from its configured
+ * BASE_URL, so nothing here composes one from window.location. A QR code is a
+ * durable artifact: it must not encode whichever hostname the app was reached on.
+ */
+
+/** Host of a server-issued short URL, for display. Falls back to this page's own
+ *  host on screens that have no link loaded yet — in production they are the
+ *  same origin, since short links and the SPA are served from one domain. */
+export function shortHost(shortUrl?: string): string {
+  if (shortUrl) {
+    try {
+      return new URL(shortUrl).host
+    } catch {
+      /* malformed: fall through */
+    }
+  }
+  return window.location.host
+}
+
+/**
+ * Only for the bare-slug catch-all, which renders before any API call and so has
+ * no server-issued short URL to use. Every other screen reads link.shortUrl.
+ */
+export function redirectUrlFor(slug: string): string {
   if (import.meta.env.DEV) return `http://localhost:3001/${slug}`
   return `${window.location.origin}/${slug}`
 }
