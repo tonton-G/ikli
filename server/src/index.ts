@@ -7,7 +7,9 @@ import type { LinkStore } from './types.js'
 const PORT = Number(process.env.PORT ?? 3001)
 const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE
 const BASE_URL = process.env.BASE_URL
-const TRUST_PROXY_HOPS = Number(process.env.TRUST_PROXY_HOPS ?? 0)
+// "" and unset are indistinguishable in most CI/CD templating; treat both as not-provided.
+const TRUST_PROXY_HOPS_ENV = process.env.TRUST_PROXY_HOPS || undefined
+const TRUST_PROXY_HOPS = Number(TRUST_PROXY_HOPS_ENV ?? 0)
 
 
 // important on asg
@@ -61,7 +63,7 @@ if (!Number.isInteger(TRUST_PROXY_HOPS) || TRUST_PROXY_HOPS < 0) {
 // unset is not a safe default: 0 hops makes req.ip the load balancer's own
 // address on every request, folding all visitors into one bucket and letting
 // the redirect limiter throttle the whole fleet through a handful of IPs.
-if (process.env.TRUST_PROXY_HOPS === undefined && process.env.NODE_ENV === 'production') {
+if (TRUST_PROXY_HOPS_ENV === undefined && process.env.NODE_ENV === 'production') {
   console.error(
     'TRUST_PROXY_HOPS is not set. Refusing to start: req.ip would be the load balancer, not the visitor.',
   )
