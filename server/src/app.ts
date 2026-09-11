@@ -42,10 +42,10 @@ export function createApp(
 
   const limiters = createLimiters(rateLimit);
 
-  // Load balancer target-group health check. Outside /api so it stays
-  // independent of how API traffic is routed, and ahead of every limiter so a
-  // busy instance can never fail its own health check and be shot by the ASG.
-  app.get('/healthz', (_req, res) => res.json({ ok: true }));
+  // Load balancer target-group health check. Registered directly on the app,
+  // ahead of the /api router mount, so it bypasses the API's own limiters
+  // and catch-all.
+  app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api', createApiRouter(store, baseUrl, limiters));
   // Before the redirect router: /assets/foo.js resolves to a real file and
   // never reaches slug matching ('assets' is a reserved slug, so the reverse
@@ -81,7 +81,8 @@ export function createApp(
     const transient = err?.name === 'TimeoutError' || Boolean(err?.$retryable);
     const status = transient ? 503 : 500;
 
-    if (req.originalUrl.startsWith('/api')) {
+    // req.path, not originalUrl: a slug like "apikey123" also starts with "/api".
+    if (req.path === '/api' || req.path.startsWith('/api/')) {
       res.status(status).json({ error: transient ? 'unavailable' : 'internal' });
     } else {
       res
