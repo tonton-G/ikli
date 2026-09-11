@@ -351,13 +351,22 @@ export default function QrCustomize() {
   const editKey = recallKey(slug)
 
   useEffect(() => {
+    // Guards a stale response for a previous slug from overwriting the
+    // current one — this route doesn't remount on slug change.
+    let ignore = false
     api
       .get(slug)
       .then((link) => {
+        if (ignore) return
         setStyle(link.qrStyle)
         setShortUrl(link.shortUrl)
       })
-      .catch(() => setStyle(null))
+      .catch(() => {
+        if (!ignore) setStyle(null)
+      })
+    return () => {
+      ignore = true
+    }
   }, [slug])
 
   const qrSvg = useMemo(
