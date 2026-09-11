@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, shortUrlFor, SHORT_BASE_DISPLAY, type QrStyle } from '@/lib/api'
+import { api, shortHost, type QrStyle } from '@/lib/api'
 import { recallKey } from '@/lib/session'
 import { renderQrSvg, downloadPng, downloadSvg } from '@/lib/qr'
 import { Shell, Tile } from '@/components/shell'
@@ -342,6 +342,9 @@ async function fileToLogo(file: File): Promise<string> {
 export default function QrCustomize() {
   const { slug = '' } = useParams()
   const [style, setStyle] = useState<QrStyle | null>(null)
+  // Kept alongside the style: this is what the code encodes, and it has to come
+  // from the server rather than this page's origin.
+  const [shortUrl, setShortUrl] = useState('')
   const [format, setFormat] = useState<'png' | 'svg'>('png')
   const [logoError, setLogoError] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -350,13 +353,15 @@ export default function QrCustomize() {
   useEffect(() => {
     api
       .get(slug)
-      .then((link) => setStyle(link.qrStyle))
+      .then((link) => {
+        setStyle(link.qrStyle)
+        setShortUrl(link.shortUrl)
+      })
       .catch(() => setStyle(null))
   }, [slug])
 
-  const shortUrl = shortUrlFor(slug)
   const qrSvg = useMemo(
-    () => (style ? renderQrSvg(shortUrl, style) : ''),
+    () => (style && shortUrl ? renderQrSvg(shortUrl, style) : ''),
     [style, shortUrl],
   )
 
@@ -407,7 +412,7 @@ export default function QrCustomize() {
             dangerouslySetInnerHTML={{ __html: qrSvg }}
           />
           <p className="mt-4 font-mono text-sm text-muted">
-            {SHORT_BASE_DISPLAY}/{slug}
+            {shortHost(shortUrl)}/{slug}
           </p>
         </div>
 
