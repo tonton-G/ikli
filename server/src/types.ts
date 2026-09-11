@@ -74,8 +74,13 @@ export interface LinkStore {
    */
   create(link: LinkRecord): Promise<boolean>;
   put(link: LinkRecord): Promise<void>;
-  /** Atomically move a record to a new slug. Returns false if newSlug is taken. */
-  rename(oldSlug: string, newSlug: string): Promise<boolean>;
+  /**
+   * Atomically move a record to a new slug. If `updated` is given, it's
+   * persisted at newSlug instead of a fresh read of the current record — so
+   * field edits ride along with the rename instead of a second write.
+   * Returns false if newSlug is taken.
+   */
+  rename(oldSlug: string, newSlug: string, updated?: LinkRecord): Promise<boolean>;
   delete(slug: string): Promise<void>;
   /**
    * Fold one visit into the stored counters atomically. Implementations must not

@@ -12,12 +12,22 @@ import { Shell, copyText } from '@/components/shell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
+// history.state can outlive a deploy and carry a stale, incomplete object.
+function isLinkPublic(v: unknown): v is LinkPublic {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    typeof (v as LinkPublic).slug === 'string' &&
+    typeof (v as LinkPublic).shortUrl === 'string'
+  )
+}
+
 export default function Result() {
   const { slug = '' } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
   const [link, setLink] = useState<LinkPublic | null>(
-    (location.state as LinkPublic) ?? null,
+    isLinkPublic(location.state) ? location.state : null,
   )
   const [copied, setCopied] = useState(false)
   const [keySaved, setKeySaved] = useState(false)

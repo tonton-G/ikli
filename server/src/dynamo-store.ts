@@ -81,7 +81,7 @@ export class DynamoDbStore implements LinkStore {
       // socket timeout to 0, both of which mean "wait forever". With no route
       // to DynamoDB — gateway endpoint missing, or the prefix-list egress rule
       // absent — a call blocks on TCP connect until the OS gives up, roughly
-      // two minutes on Linux, then retries twice more, while /healthz keeps
+      // two minutes on Linux, then retries twice more, while /api/health keeps
       // answering and the ALB keeps sending traffic. These bound that to a
       // TimeoutError in the log within seconds of the first request.
       requestHandler: { connectionTimeout: 2_000, requestTimeout: 5_000 },
@@ -129,13 +129,14 @@ export class DynamoDbStore implements LinkStore {
   }
 
   /**
-   * Known limitation: the read is not part of the transaction, so a visit that
-   * lands between get() and the write increments the old item and is then
-   * deleted with it. Renames are rare and owner-initiated; this is documented
-   * rather than closed with optimistic concurrency.
+   * Known limitation: when `updated` isn't supplied, the read is not part of
+   * the transaction, so a visit that lands between get() and the write
+   * increments the old item and is then deleted with it. Renames are rare and
+   * owner-initiated; this is documented rather than closed with optimistic
+   * concurrency.
    */
-  async rename(oldSlug: string, newSlug: string): Promise<boolean> {
-    const link = await this.get(oldSlug);
+  async rename(oldSlug: string, newSlug: string, updated?: LinkRecord): Promise<boolean> {
+    const link = updated ?? (await this.get(oldSlug));
     if (!link) return false;
     try {
       // Both conditions are evaluated inside one transaction, so a slug can
