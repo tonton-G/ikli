@@ -69,9 +69,9 @@ export class FileStore implements LinkStore {
     await this.flush();
   }
 
-  async rename(oldSlug: string, newSlug: string): Promise<boolean> {
+  async rename(oldSlug: string, newSlug: string, updated?: LinkRecord): Promise<boolean> {
     await this.load();
-    const link = this.links.get(oldSlug);
+    const link = updated ?? this.links.get(oldSlug);
     if (!link) return false;
     if (this.links.has(newSlug)) return false;
     this.links.delete(oldSlug);
