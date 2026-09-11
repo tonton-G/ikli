@@ -76,7 +76,16 @@ export class DynamoDbStore implements LinkStore {
 
   constructor(
     private table: string,
-    client: DynamoDBClient = new DynamoDBClient({}),
+    client: DynamoDBClient = new DynamoDBClient({
+      // The SDK ships with no timeouts: requestTimeout defaults to 0 and the
+      // socket timeout to 0, both of which mean "wait forever". With no route
+      // to DynamoDB — gateway endpoint missing, or the prefix-list egress rule
+      // absent — a call blocks on TCP connect until the OS gives up, roughly
+      // two minutes on Linux, then retries twice more, while /healthz keeps
+      // answering and the ALB keeps sending traffic. These bound that to a
+      // TimeoutError in the log within seconds of the first request.
+      requestHandler: { connectionTimeout: 2_000, requestTimeout: 5_000 },
+    }),
   ) {
     this.doc = DynamoDBDocumentClient.from(client, {
       marshallOptions: { removeUndefinedValues: true },
@@ -90,6 +99,27 @@ export class DynamoDbStore implements LinkStore {
     // A visitor marker or any other non-link item at this key is not a link.
     if (!res.Item || typeof res.Item.longUrl !== 'string') return null;
     return fromItem(res.Item);
+  }
+
+  /**
+   * Conditional write: the item is created only if nothing holds that key yet.
+   * This is the collision check for slug minting — a get() first would be a
+   * read-then-write race across instances.
+   */
+  async create(link: LinkRecord): Promise<boolean> {
+    try {
+      await this.doc.send(
+        new PutCommand({
+          TableName: this.table,
+          Item: toItem(link),
+          ConditionExpression: 'attribute_not_exists(slug)',
+        }),
+      );
+      return true;
+    } catch (err: any) {
+      if (err?.name === 'ConditionalCheckFailedException') return false;
+      throw err;
+    }
   }
 
   async put(link: LinkRecord): Promise<void> {
