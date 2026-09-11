@@ -40,9 +40,27 @@ export class FileStore implements LinkStore {
     return this.writing;
   }
 
+  /**
+   * Returns a copy, not the stored object. Handing out a live reference lets a
+   * caller's in-memory edit reach the store without a write — so a request that
+   * mutates a record and then fails before persisting would still have changed
+   * it. The DynamoDB store rebuilds a record per read and never aliases; this
+   * keeps both implementations of the interface behaving the same way.
+   */
   async get(slug: string): Promise<LinkRecord | null> {
     await this.load();
-    return this.links.get(slug) ?? null;
+    const link = this.links.get(slug);
+    return link ? structuredClone(link) : null;
+  }
+
+  // Single process, so "check then set" is atomic here in a way it is not in
+  // DynamoDB; the conditional write there is what actually closes the race.
+  async create(link: LinkRecord): Promise<boolean> {
+    await this.load();
+    if (this.links.has(link.slug)) return false;
+    this.links.set(link.slug, link);
+    await this.flush();
+    return true;
   }
 
   async put(link: LinkRecord): Promise<void> {
