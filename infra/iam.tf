@@ -28,6 +28,7 @@ data "aws_iam_policy_document" "app_dynamodb" {
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
       "dynamodb:DeleteItem",
+      "dynamodb:TransactWriteItems",
     ]
 
     resources = [aws_dynamodb_table.links.arn]
