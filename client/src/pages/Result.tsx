@@ -3,8 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Check, Copy } from 'lucide-react'
 import {
   api,
-  shortUrlFor,
-  SHORT_BASE_DISPLAY,
+  shortHost,
   type LinkPublic,
 } from '@/lib/api'
 import { recallKey } from '@/lib/session'
@@ -33,10 +32,11 @@ export default function Result() {
       .catch(() => navigate('/', { replace: true }))
   }, [link, slug, navigate])
 
-  const shortUrl = shortUrlFor(slug)
+  // The server's short URL, not one composed from this page's location.
+  const shortUrl = link?.shortUrl ?? ''
   const qrSvg = useMemo(
-    () => (link ? renderQrSvg(shortUrl, link.qrStyle) : ''),
-    [link, shortUrl],
+    () => (link ? renderQrSvg(link.shortUrl, link.qrStyle) : ''),
+    [link],
   )
 
   function flash() {
@@ -63,7 +63,7 @@ export default function Result() {
           rel="noreferrer"
           className="font-display mt-3 border-b-4 border-ink pb-1 text-6xl font-semibold sm:text-7xl"
         >
-          {SHORT_BASE_DISPLAY}/{slug}
+          {shortHost(shortUrl)}/{slug}
         </a>
 
         <div className="mt-9 flex flex-wrap justify-center gap-4">
@@ -125,7 +125,7 @@ export default function Result() {
               </Button>
             </div>
             <p className="mt-4 font-mono text-xs text-muted">
-              coming back later? paste {SHORT_BASE_DISPLAY}/{slug} on the home page and
+              coming back later? paste {shortHost(shortUrl)}/{slug} on the home page and
               it'll ask for this key.
             </p>
           </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, SHORT_BASE_DISPLAY, type LinkStats } from '@/lib/api';
+import { api, shortHost, type LinkStats } from '@/lib/api';
 import { Shell } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 
@@ -43,7 +43,7 @@ export default function Stats({ slug }: { slug: string }) {
   return (
     <Shell right={<span>public · no login</span>}>
       <h1 className="font-display text-5xl font-semibold">
-        {SHORT_BASE_DISPLAY}/{slug}
+        {shortHost()}/{slug}
       </h1>
 
       <div className="mt-8 flex gap-12 border-y border-ink/10 py-7">

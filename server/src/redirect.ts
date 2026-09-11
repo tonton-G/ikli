@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { Router } from 'express'
+import { Router, type RequestHandler } from 'express'
+import { wrap } from './async-handler.js'
 import { OTHER_REFERRER, type LinkStore, type Visit } from './types.js'
 
 // RFC 1123 hostname: dot-separated labels of letters, digits and hyphens, no
@@ -36,11 +37,18 @@ function visitFrom(req: { ip?: string; headers: Record<string, any> }): Visit {
   }
 }
 
-export function createRedirectRouter(store: LinkStore): Router {
+export function createRedirectRouter(store: LinkStore, limiter: RequestHandler): Router {
   const router = Router()
 
-  router.get('/:slug([a-z0-9-]{3,32})', async (req, res) => {
-    const link = await store.get(req.params.slug)
+  // The limiter sits on this route rather than the whole router so that loading
+  // the SPA doesn't spend a visitor's redirect budget.
+  router.get('/:slug([a-z0-9-]{3,32})', limiter, wrap(async (req, res) => {
+    // Express matches routes case-insensitively, so /ABCD arrives here with its
+    // capitals while every stored slug is lowercase. Printed links and
+    // auto-capitalising keyboards make that a common way to reach a link, and
+    // without normalising, the lookup misses and the visitor is sent home.
+    const slug = req.params.slug.toLowerCase()
+    const link = await store.get(slug)
 
     // Unknown slug: hand the visitor to the app rather than a bare error, so a
     // mistyped link lands somewhere they can act on.
@@ -59,7 +67,7 @@ export function createRedirectRouter(store: LinkStore): Router {
     // quietly under-count stats. 302 rather than 301 for the same reason.
     res.set('Cache-Control', 'no-store')
     res.redirect(302, link.longUrl)
-  })
+  }))
 
   return router
 }

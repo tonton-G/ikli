@@ -4,7 +4,7 @@ import Result from './pages/Result';
 import QrCustomize from './pages/QrCustomize';
 import EditLink, { LostKey } from './pages/EditLink';
 import Stats from './pages/Stats';
-import { shortUrlFor } from '@/lib/api';
+import { redirectUrlFor } from '@/lib/api';
 import { Shell } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 
@@ -35,7 +35,7 @@ function CatchAll() {
 
   const slugMatch = pathname.match(/^\/([a-z0-9-]{3,32})$/);
   if (slugMatch) {
-    window.location.replace(shortUrlFor(slugMatch[1]));
+    window.location.replace(redirectUrlFor(slugMatch[1]));
     return null;
   }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, ApiError, SHORT_BASE_DISPLAY, type LinkPublic } from '@/lib/api';
+import { api, ApiError, shortHost, type LinkPublic } from '@/lib/api';
 import { forgetKey, moveKey, recallKey, rememberKey } from '@/lib/session';
 import { Shell, submitOnEnter } from '@/components/shell';
 import { Button } from '@/components/ui/button';
@@ -66,7 +66,7 @@ function KeyGate({ slug, onAccepted }: { slug: string; onAccepted: (link: LinkPu
       <div className="flex flex-1 flex-col justify-center pb-24">
         <h1 className="font-display mb-2 text-5xl font-semibold">Got the key?</h1>
         <p className="mb-8 font-mono text-sm text-muted">
-          editing {SHORT_BASE_DISPLAY}/{slug} needs its edit key — e.g. tide-9042-plum
+          editing {shortHost()}/{slug} needs its edit key — e.g. tide-9042-plum
         </p>
         <form onSubmit={submit} className="flex max-w-md gap-4">
           <Input
@@ -172,7 +172,7 @@ export default function EditLink() {
         slug
       </Label>
       <div className="mb-7 flex items-center gap-3">
-        <span className="font-mono text-sm text-muted">{SHORT_BASE_DISPLAY}/</span>
+        <span className="font-mono text-sm text-muted">{shortHost(link.shortUrl)}/</span>
         <Input
           id="slug"
           value={newSlug}
@@ -197,7 +197,7 @@ export default function EditLink() {
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this link?</AlertDialogTitle>
               <AlertDialogDescription>
-                {SHORT_BASE_DISPLAY}/{link.slug} will stop working immediately, and its stats go
+                {shortHost(link.shortUrl)}/{link.slug} will stop working immediately, and its stats go
                 with it. There's no undo — this is the one thing the key can't bring back.
               </AlertDialogDescription>
             </AlertDialogHeader>

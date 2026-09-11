@@ -176,3 +176,15 @@ resource "aws_vpc_security_group_ingress_rule" "endpoints_from_app" {
   to_port                      = 443
   ip_protocol                  = "tcp"
 }
+#endpoint to dynamodb
+
+resource "aws_vpc_security_group_egress_rule" "app_to_dynamodb" {
+  security_group_id = aws_security_group.app.id
+  description       = "HTTPS to DynamoDB via gateway endpoint"
+
+  prefix_list_id = aws_vpc_endpoint.dynamodb.prefix_list_id
+  from_port      = 443
+  to_port        = 443
+  ip_protocol    = "tcp"
+}
+

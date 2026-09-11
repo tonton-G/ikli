@@ -2,21 +2,14 @@ export interface QrStyle {
   pattern: 'square' | 'rounded' | 'dots' | 'fluid' | 'diamond' | 'star';
   corners: 'square' | 'rounded' | 'leaf' | 'target';
   color: string;
-  /** Gradient end color; null = solid fill. */
   color2: string | null;
   gradient: 'linear' | 'radial';
-  /** Eye (finder) color; null = follow the module color/gradient. */
   eyeColor: string | null;
-  /** Background; null = transparent. */
   bg: string | null;
   frame: 'none' | 'corner' | 'full' | 'scanme';
-  /** Label text for the 'scanme' frame. */
   frameText: string;
-  /** Frame stroke/label color; null = follow the module color. */
   frameColor: string | null;
-  /** Center logo: a data:image/... URI, or a short emoji string. null = none. */
   logo: string | null;
-  /** How much of the code the center logo covers. */
   logoSize: 'sm' | 'md' | 'lg';
 }
 
@@ -74,6 +67,12 @@ export interface Visit {
 
 export interface LinkStore {
   get(slug: string): Promise<LinkRecord | null>;
+  /**
+   * Create only if the slug is unclaimed; returns false if it's already taken.
+   * This is the collision check for slug minting — a get() first here would be
+   * a read-then-write race across instances.
+   */
+  create(link: LinkRecord): Promise<boolean>;
   put(link: LinkRecord): Promise<void>;
   /** Atomically move a record to a new slug. Returns false if newSlug is taken. */
   rename(oldSlug: string, newSlug: string): Promise<boolean>;

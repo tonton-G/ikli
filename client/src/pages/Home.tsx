@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
-import { api, ApiError, SHORT_BASE_DISPLAY, shortUrlFor } from '@/lib/api';
+import { api, ApiError, shortHost } from '@/lib/api';
 import { rememberKey } from '@/lib/session';
 import { Shell, copyText, submitOnEnter } from '@/components/shell';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,9 @@ function editSlugFrom(raw: string): string | null {
   const isSlug = (s: string) => /^[a-z0-9-]{3,32}$/.test(s) && !EDIT_KEY.test(s);
   if (isSlug(input)) return input;
   const [host, ...rest] = input.split('/');
-  const hosts = [SHORT_BASE_DISPLAY, window.location.host, 'localhost:3001'];
+  // In production the SPA and short links share one origin, so this page's own
+  // host is the canonical short host; localhost:3001 covers the split dev setup.
+  const hosts = [window.location.host, 'localhost:3001'];
   const path = rest.join('/');
   return hosts.includes(host) && isSlug(path) ? path : null;
 }
@@ -47,7 +49,7 @@ export default function Home() {
     try {
       const link = await api.create(url.trim());
       rememberKey(link.slug, link.editKey);
-      await copyText(shortUrlFor(link.slug));
+      await copyText(link.shortUrl);
       navigate(`/${link.slug}/done`, { state: link });
     } catch (err) {
       setError(
@@ -104,7 +106,7 @@ export default function Home() {
           onClick={() => inputRef.current?.focus()}
           className="cursor-pointer font-mono text-sm text-muted underline-offset-4 hover:text-ink hover:underline"
         >
-          have a key? paste your {SHORT_BASE_DISPLAY} link above
+          have a key? paste your {shortHost()} link above
         </button>
       </div>
     </Shell>
