@@ -1,3 +1,2 @@
-aws_region  = "<AWS_REGION>"   
-project     = "<PROJECT_NAME>"  
-domain_name = "<YOUR_DOMAIN>"   
+aws_account_id = "<YOUR_AWS_ACCOUNT_ID>"
+my_ip_cidr     = "<YOUR_IP_ADDRESS>/32"
