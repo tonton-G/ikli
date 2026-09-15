@@ -16,3 +16,8 @@ output "acm_certificate_arn_alb" {
   description = "ARN of the ALB-facing ACM certificate (ap-southeast-1)"
   value       = aws_acm_certificate.alb.arn
 }
+
+output "cloudfront_distribution_domain" {
+  description = "CloudFront distribution domain name"
+  value       = aws_cloudfront_distribution.main.domain_name
+}
