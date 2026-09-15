@@ -2,7 +2,7 @@
 
 A keyless link shortener. No accounts — each link gets a single edit key at creation time, which is the only way to modify or delete it. Stats stay public forever; losing the key freezes the destination but the redirect keeps working.
 
-**Live:** `<YOUR_DEPLOYED_URL>`
+**Live:** ikli.fyi
 
 ## Why this exists
 
@@ -154,6 +154,3 @@ Explicitly out of scope for this project's size: WAF, GuardDuty, AWS Config, a c
 
 **No interstitial warning page.** Every URL shortener can hide a destination, and a warning page doesn't close that gap: the visitor it targets clicks through, and anyone wanting a silent redirect uses a different service. The mitigations that actually work are conditional — warn only on URLs a reputation service like Safe Browsing or VirusTotal has flagged — or reactive: abuse reports plus takedown, which is how the large shorteners handle it. The first is a real third-party dependency rather than a checkbox, and is out of scope here. The second needs a way to disable a slug, which a keyless, admin-less model has no product surface for; takedown would be an operator action against the table. A universal warning page would have looked like a control without being one, so there isn't one.
 
----
-
-Part of a two-project AWS portfolio, alongside `<YOUR_TALAS_REPO_LINK>` (three-tier exam reviewer platform).
