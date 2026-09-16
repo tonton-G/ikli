@@ -21,3 +21,18 @@ output "cloudfront_distribution_domain" {
   description = "CloudFront distribution domain name"
   value       = aws_cloudfront_distribution.main.domain_name
 }
+
+output "app_instance_profile_name" {
+  description = "Iam Instance profile name used by packer and ASG launch template"
+  value       = aws_iam_instance_profile.app.name
+}
+
+output "packer_build_security_group_id" {
+  description = "Security group for the packer build instance"
+  value       = aws_security_group.packer_build.id
+}
+
+output "public_subnets_id" {
+  description = "Public subnet used by packer build"
+  value       = aws_subnet.public["a"].id
+}
