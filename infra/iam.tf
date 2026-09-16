@@ -41,6 +41,12 @@ resource "aws_iam_role_policy" "app_dynamodb" {
   policy = data.aws_iam_policy_document.app_dynamodb.json
 }
 
+
+resource "aws_iam_role_policy_attachment" "app_ssm" {
+  role       = aws_iam_role.app.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
 resource "aws_iam_instance_profile" "app" {
   name = "ikli-app-profile"
   role = aws_iam_role.app.name
@@ -49,3 +55,4 @@ resource "aws_iam_instance_profile" "app" {
     Name = "ikli-app-profile"
   }
 }
+
