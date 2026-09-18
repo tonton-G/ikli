@@ -55,7 +55,7 @@ export function Shell({
         <Link to="/" className="flex items-center gap-2.5">
           <span className="h-[22px] w-[22px] rounded-lg bg-ink" />
           <span className="font-display text-[26px] leading-none font-semibold">
-            ikli/
+            ikli
           </span>
         </Link>
         <div className="font-mono text-sm text-muted">{right}</div>
