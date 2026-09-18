@@ -53,7 +53,19 @@ export function Shell({
       )}
       <header className="flex items-center justify-between py-8">
         <Link to="/" className="flex items-center gap-2.5">
-          <span className="h-[22px] w-[22px] rounded-lg bg-ink" />
+          <svg
+            viewBox="0 0 160 160"
+            aria-hidden="true"
+            className="h-[22px] w-[22px] text-ink"
+          >
+            <rect width="160" height="160" rx="38" fill="currentColor" />
+            <path
+              d="M60 130 L100 30"
+              stroke="var(--color-paper)"
+              strokeWidth="16"
+              strokeLinecap="round"
+            />
+          </svg>
           <span className="font-display text-[26px] leading-none font-semibold">
             ikli
           </span>
