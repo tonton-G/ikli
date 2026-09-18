@@ -12,8 +12,24 @@ resource "aws_launch_template" "app" {
   network_interfaces {
     associate_public_ip_address = false
     security_groups             = [aws_security_group.app.id]
-
   }
+
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+    mkdir -p /etc/systemd/system/ikli.service.d
+    cat > /etc/systemd/system/ikli.service.d/override.conf <<'OVERRIDE'
+    [Service]
+    Environment=NODE_ENV=production
+    Environment=TRUST_PROXY_HOPS=2
+    Environment=BASE_URL=https://ikli.fyi
+    OVERRIDE
+    systemctl daemon-reload
+    systemctl restart ikli.service
+  EOF
+  )
+
+
+
 
   tag_specifications {
     resource_type = "instance"
