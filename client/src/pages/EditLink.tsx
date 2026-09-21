@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError, shortHost, type LinkPublic } from '@/lib/api';
 import { forgetKey, moveKey, recallKey, rememberKey } from '@/lib/session';
-import { Shell, submitOnEnter } from '@/components/shell';
+import { LoadingShell, Shell, submitOnEnter } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,19 +43,32 @@ export function LostKey() {
 function KeyGate({ slug, onAccepted }: { slug: string; onAccepted: (link: LinkPublic, key: string) => void }) {
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!key.trim() || busy) return;
     setBusy(true);
+    setError(null);
     try {
       const link = await api.verify(slug, key.trim());
       rememberKey(slug, key.trim());
       onAccepted(link, key.trim());
     } catch (err) {
-      if (err instanceof ApiError && err.status === 404) navigate('/', { replace: true });
-      else navigate(`/${slug}/lost`, { replace: true });
+      // A typo deserves a retry, not the lost-key dead end.
+      const code = err instanceof ApiError ? err.code : 'error';
+      if (err instanceof ApiError && err.status === 404) {
+        navigate('/', { replace: true });
+      } else {
+        setError(
+          code === 'bad_key'
+            ? "that key doesn't fit this link — try again"
+            : code === 'rate_limited'
+              ? 'too many tries — wait a few minutes'
+              : 'could not reach the server — try again',
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -82,6 +95,7 @@ function KeyGate({ slug, onAccepted }: { slug: string; onAccepted: (link: LinkPu
             Unlock
           </Button>
         </form>
+        {error && <p className="mt-6 font-mono text-sm text-danger">{error}</p>}
         <Link to={`/${slug}/lost`} className="mt-6 font-mono text-sm text-muted underline hover:text-ink">
           lost it?
         </Link>
@@ -95,7 +109,8 @@ export default function EditLink() {
   const navigate = useNavigate();
   const [link, setLink] = useState<LinkPublic | null>(null);
   const [key, setKey] = useState<string | null>(null);
-  const [checking, setChecking] = useState(true);
+  // Only "checking" while there is actually a remembered key to verify.
+  const [checking, setChecking] = useState(() => recallKey(slug) !== null);
 
   const [url, setUrl] = useState('');
   const [newSlug, setNewSlug] = useState(slug);
@@ -112,10 +127,7 @@ export default function EditLink() {
   // Try the key remembered from creation/unlock in this session.
   useEffect(() => {
     const remembered = recallKey(slug);
-    if (!remembered) {
-      setChecking(false);
-      return;
-    }
+    if (!remembered) return;
     api
       .verify(slug, remembered)
       .then((l) => accept(l, remembered))
@@ -151,12 +163,16 @@ export default function EditLink() {
 
   async function removeLink() {
     if (!link || !key) return;
-    await api.remove(link.slug, key);
-    forgetKey(link.slug);
-    navigate('/');
+    try {
+      await api.remove(link.slug, key);
+      forgetKey(link.slug);
+      navigate('/');
+    } catch {
+      setError('delete failed — try again');
+    }
   }
 
-  if (checking) return <Shell right={null}>{null}</Shell>;
+  if (checking) return <LoadingShell />;
   if (!link || !key) return <KeyGate slug={slug} onAccepted={accept} />;
 
   return (
