@@ -8,7 +8,7 @@ import {
 } from '@/lib/api'
 import { recallKey } from '@/lib/session'
 import { renderQrSvg, downloadPng } from '@/lib/qr'
-import { Shell, copyText } from '@/components/shell'
+import { LoadingShell, Shell, copyText } from '@/components/shell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -32,6 +32,9 @@ export default function Result() {
   const [copied, setCopied] = useState(false)
   const [keySaved, setKeySaved] = useState(false)
   const editKey = recallKey(slug)
+  // Set by Home after a successful clipboard write; a direct visit or a
+  // failed copy (e.g. no clipboard on http) must not claim "copied".
+  const copiedOnCreate = (location.state as { copied?: boolean } | null)?.copied === true
 
   // Direct visit / refresh: re-fetch public metadata for the QR style.
   useEffect(() => {
@@ -54,7 +57,7 @@ export default function Result() {
     setTimeout(() => setCopied(false), 1600)
   }
 
-  if (!link) return <Shell right={null}>{null}</Shell>
+  if (!link) return <LoadingShell />
 
   return (
     <Shell
@@ -65,7 +68,9 @@ export default function Result() {
       }
     >
       <div className="flex flex-col items-center">
-        <p className="font-mono text-sm text-muted">shortened &amp; copied</p>
+        <p className="font-mono text-sm text-muted">
+          {copiedOnCreate ? <>shortened &amp; copied</> : <>shortened</>}
+        </p>
 
         <a
           href={shortUrl}
@@ -79,7 +84,7 @@ export default function Result() {
         <div className="mt-9 flex flex-wrap justify-center gap-4">
           <Button
             variant="outline"
-            onClick={() => copyText(shortUrl).then(flash)}
+            onClick={() => copyText(shortUrl).then((ok) => ok && flash())}
           >
             {copied ? 'Copied ✓' : 'Copy'}
           </Button>
@@ -124,7 +129,7 @@ export default function Result() {
               />
               <Button
                 className="shrink-0"
-                onClick={() => copyText(editKey).then(() => setKeySaved(true))}
+                onClick={() => copyText(editKey).then((ok) => ok && setKeySaved(true))}
               >
                 {keySaved ? (
                   <Check className="size-5" strokeWidth={2.2} />
