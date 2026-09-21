@@ -1,12 +1,15 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import Home from './pages/Home';
 import Result from './pages/Result';
-import QrCustomize from './pages/QrCustomize';
 import EditLink, { LostKey } from './pages/EditLink';
 import Stats from './pages/Stats';
 import { redirectUrlFor } from '@/lib/api';
-import { Shell } from '@/components/shell';
+import { LoadingShell, Shell } from '@/components/shell';
 import { Button } from '@/components/ui/button';
+
+
+const QrCustomize = lazy(() => import('./pages/QrCustomize'));
 
 function NotFound() {
   return (
@@ -48,7 +51,14 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/:slug/done" element={<Result />} />
-        <Route path="/:slug/qr" element={<QrCustomize />} />
+        <Route
+          path="/:slug/qr"
+          element={
+            <Suspense fallback={<LoadingShell />}>
+              <QrCustomize />
+            </Suspense>
+          }
+        />
         <Route path="/:slug/edit" element={<EditLink />} />
         <Route path="/:slug/lost" element={<LostKey />} />
         <Route path="*" element={<CatchAll />} />
