@@ -229,6 +229,13 @@ test('the load balancer health check answers at /api/health', async () => {
   assert.equal(renamed.status, 200)
 })
 
+test('every response carries the baseline security headers', async () => {
+  const res = await fetch(`${base}/api/health`)
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff')
+  assert.equal(res.headers.get('x-frame-options'), 'DENY')
+  assert.equal(res.headers.get('referrer-policy'), 'strict-origin-when-cross-origin')
+})
+
 test('concurrent visits are all counted, none lost', async () => {
   const link = await createLink('https://example.com/busy')
   const VISITS = 25
