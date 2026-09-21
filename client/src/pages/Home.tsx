@@ -13,7 +13,7 @@ const EDIT_KEY = /^[a-z]+-\d{4}-[a-z]+$/;
  * One of our own short links (or a bare slug) pasted back in is an edit
  * request, not a shorten — that's what people who saved a key actually have.
  */
-function editSlugFrom(raw: string): string | null {
+export function editSlugFrom(raw: string): string | null {
   const input = raw.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
   const isSlug = (s: string) => /^[a-z0-9-]{3,32}$/.test(s) && !EDIT_KEY.test(s);
   if (isSlug(input)) return input;
@@ -49,13 +49,16 @@ export default function Home() {
     try {
       const link = await api.create(url.trim());
       rememberKey(link.slug, link.editKey);
-      await copyText(link.shortUrl);
-      navigate(`/${link.slug}/done`, { state: link });
+      const copied = await copyText(link.shortUrl);
+      navigate(`/${link.slug}/done`, { state: { ...link, copied } });
     } catch (err) {
+      const code = err instanceof ApiError ? err.code : 'error';
       setError(
-        err instanceof ApiError && err.code === 'invalid_url'
+        code === 'invalid_url'
           ? "that doesn't look like a link — try a full URL"
-          : 'could not reach the server — try again',
+          : code === 'rate_limited'
+            ? "that's a lot of links — wait a few minutes"
+            : 'could not reach the server — try again',
       );
     } finally {
       setBusy(false);
