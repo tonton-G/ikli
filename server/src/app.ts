@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import compression from 'compression';
 import express, { type ErrorRequestHandler, type Express } from 'express';
 import { createApiRouter } from './api.js';
 import { createLimiters } from './rate-limit.js';
@@ -38,6 +39,15 @@ export function createApp(
   const { trustProxyHops = 0, rateLimit = true } = options;
   const app = express();
   app.set('trust proxy', trustProxyHops);
+  // Nothing upstream compresses (the ALB passes bytes through), so the SPA
+  // bundle would otherwise ship uncompressed to every first-time visitor.
+  app.use(compression());
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
   app.use(express.json({ limit: '256kb' })); // headroom for QR logo data URIs
 
   const limiters = createLimiters(rateLimit);
@@ -51,7 +61,18 @@ export function createApp(
   // never reaches slug matching ('assets' is a reserved slug, so the reverse
   // can't happen). index: false keeps / falling through to the SPA fallback
   // rather than being answered here.
-  app.use(express.static(clientDist, { index: false }));
+  app.use(
+    express.static(clientDist, {
+      index: false,
+      // Vite content-hashes everything under assets/, so those files can be
+      // cached forever; anything else in dist keeps the default validation.
+      setHeaders(res, filePath) {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      },
+    }),
+  );
   app.use('/', createRedirectRouter(store, limiters.redirect));
 
   // SPA fallback: anything left (/, /<slug>/edit, /<slug>+, unknown paths)
