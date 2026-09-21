@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, shortHost, type LinkStats } from '@/lib/api';
-import { Shell } from '@/components/shell';
+import { LoadingShell, Shell } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 
 const DAYS_SHOWN = 10;
@@ -29,7 +29,7 @@ export default function Stats({ slug }: { slug: string }) {
     api.stats(slug).then(setStats).catch(() => navigate('/', { replace: true }));
   }, [slug, navigate]);
 
-  if (!stats) return <Shell right={null}>{null}</Shell>;
+  if (!stats) return <LoadingShell />;
 
   const days = lastDays(DAYS_SHOWN);
   const perDay = days.map((d) => stats.clicksByDay[d] ?? 0);
