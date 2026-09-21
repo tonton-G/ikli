@@ -77,6 +77,17 @@ export function Shell({
   )
 }
 
+/** Full-page loading state: same chrome as the loaded page, so nothing jumps. */
+export function LoadingShell() {
+  return (
+    <Shell right={null}>
+      <div className="flex flex-1 items-center justify-center pb-24">
+        <span className="animate-pulse font-mono text-sm text-muted">loading…</span>
+      </div>
+    </Shell>
+  )
+}
+
 /** Explicit Enter-to-submit for single-input forms (some environments skip the implicit submit). */
 export function submitOnEnter(e: React.KeyboardEvent<HTMLInputElement>): void {
   if (e.key === 'Enter') {
