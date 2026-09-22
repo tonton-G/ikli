@@ -107,7 +107,7 @@ Two route tables. The public table carries a default route to the internet gatew
 ## Local development
 
 ```bash
-git clone <YOUR_REPO_URL>
+git clone (https://github.com/tonton-G/ikli.git)
 cd ikli
 npm install
 npm run dev
