@@ -36,9 +36,7 @@ if (DYNAMODB_TABLE) {
   console.log(`ikli store: local file ${dataFile} (development only)`)
 }
 
-// Short URLs and the QR codes made from them are minted from this, never from
-// the request host. Unset in production would mean codes encoding whatever
-// hostname the instance happened to be reached on, printed and unfixable.
+
 if (!BASE_URL && process.env.NODE_ENV === 'production') {
   console.error(
     'BASE_URL is not set. Refusing to start: short URLs would encode the request host.',
@@ -48,10 +46,7 @@ if (!BASE_URL && process.env.NODE_ENV === 'production') {
 const baseUrl = (BASE_URL ?? `http://localhost:${PORT}`).replace(/\/+$/, '')
 console.log(`ikli base URL: ${baseUrl}`)
 
-// req.ip is derived from this, and req.ip is what visitor stats and every
-// per-IP limit key on. Number('two') is NaN and Number('') is 0, both of which
-// Express accepts in silence, so the shape is checked here rather than found
-// later in a stats table claiming every visitor is the same person.
+
 if (!Number.isInteger(TRUST_PROXY_HOPS) || TRUST_PROXY_HOPS < 0) {
   console.error(
     `TRUST_PROXY_HOPS must be a non-negative integer, got "${process.env.TRUST_PROXY_HOPS}".`,
@@ -59,10 +54,6 @@ if (!Number.isInteger(TRUST_PROXY_HOPS) || TRUST_PROXY_HOPS < 0) {
   process.exit(1)
 }
 
-// In production there is always at least the ALB in front, so leaving this
-// unset is not a safe default: 0 hops makes req.ip the load balancer's own
-// address on every request, folding all visitors into one bucket and letting
-// the redirect limiter throttle the whole fleet through a handful of IPs.
 if (TRUST_PROXY_HOPS_ENV === undefined && process.env.NODE_ENV === 'production') {
   console.error(
     'TRUST_PROXY_HOPS is not set. Refusing to start: req.ip would be the load balancer, not the visitor.',
@@ -71,16 +62,17 @@ if (TRUST_PROXY_HOPS_ENV === undefined && process.env.NODE_ENV === 'production')
 }
 console.log(`ikli trusted proxy hops: ${TRUST_PROXY_HOPS}`)
 
-const app = createApp(store, baseUrl, { trustProxyHops: TRUST_PROXY_HOPS })
+
+const app = createApp(store, baseUrl, {
+  trustProxyHops: TRUST_PROXY_HOPS,
+  rateLimitTable: DYNAMODB_TABLE,
+})
 
 const server = app.listen(PORT, () => {
   console.log(`ikli server on http://localhost:${PORT}`)
 })
 
 // Scale-in and every deploy send SIGTERM, and Node's default is to exit at
-// once — dropping whatever is in flight, which on the redirect path means a
-// visitor gets a dead connection instead of their 302. The target group's
-// deregistration delay exists to cover exactly this window, so stop accepting
 // new connections and let the open ones finish.
 function shutdown(signal: string): void {
   console.log(`${signal} received, draining`)
