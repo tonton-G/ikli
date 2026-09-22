@@ -1,16 +1,7 @@
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, type Store } from 'express-rate-limit';
 import type { RequestHandler } from 'express';
+import { DynamoRateLimitStore } from './rate-limit-store.js';
 
-/**
- * Per-IP limits. All three key on req.ip, which is only the real client when
- * 'trust proxy' matches the number of proxies actually in front of the app:
- * too high and a caller picks its own key by prepending a header, too low and
- * every visitor collapses into the load balancer's address. See AppOptions.
- *
- * The counters live in process memory, so the effective ceiling across the ASG
- * is (limit x running instances). That is accepted rather than solved: a shared
- * counter means a shared store, and the ones available here bill by the hour.
- */
 
 const MINUTES = 60_000;
 
@@ -26,38 +17,36 @@ export interface Limiters {
   redirect: RequestHandler;
 }
 
-export function createLimiters(enabled: boolean): Limiters {
+export function createLimiters(enabled: boolean, dynamoTable?: string): Limiters {
   if (!enabled) {
     return { create: passthrough, auth: passthrough, redirect: passthrough };
   }
 
-  // draft-7 emits one combined `RateLimit: limit=30, remaining=29, reset=60`
-  // header alongside RateLimit-Policy. (Discrete RateLimit-Limit/-Remaining/
-  // -Reset headers are draft-6; draft-8 swaps in quoted policy names and a
-  // partition key.) legacyHeaders off: no X-RateLimit-* duplicates.
-  const shared = { standardHeaders: 'draft-7', legacyHeaders: false } as const;
+
+  const shared = {
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    passOnStoreError: true,
+  } as const;
   const json: RequestHandler = (_req, res) => {
     res.status(429).json({ error: 'rate_limited' });
   };
 
+  const storeFor = (name: string): { store: Store } | {} =>
+    dynamoTable ? { store: new DynamoRateLimitStore(dynamoTable, name) } : {};
+
   return {
-    // Creating a link is an unauthenticated write to a pay-per-request table,
-    // which makes it the only route where an anonymous caller spends money.
-    // Well above what shortening links by hand looks like, flat against a loop.
     create: rateLimit({
       ...shared,
+      ...storeFor('create'),
       windowMs: 10 * MINUTES,
       limit: 30,
       handler: json,
     }),
 
-    // An edit key is ~176M combinations (140 x 9000 x 140) checked with a hash
-    // compare, so request rate is the only thing between a guesser and someone
-    // else's link. Successful requests are skipped deliberately: an owner
-    // restyling a QR code sends a long run of valid PATCHes and must not be
-    // locked out of their own link by using it.
     auth: rateLimit({
       ...shared,
+      ...storeFor('auth'),
       windowMs: 10 * MINUTES,
       limit: 20,
       skipSuccessfulRequests: true,
@@ -69,6 +58,7 @@ export function createLimiters(enabled: boolean): Limiters {
     // seconds. Answers in text/plain: what lands here is a browser, not a client.
     redirect: rateLimit({
       ...shared,
+      ...storeFor('redirect'),
       windowMs: 5 * MINUTES,
       limit: 600,
       handler: (_req, res) => {
