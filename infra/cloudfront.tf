@@ -20,6 +20,11 @@ resource "aws_cloudfront_distribution" "main" {
     domain_name = aws_lb.alb.dns_name
     origin_id   = "alb-app"
 
+    custom_header {
+      name  = "X-Origin-Secret"
+      value = random_password.cf_origin_secret.result
+    }
+
     custom_origin_config {
       http_port              = 80
       https_port             = 443
