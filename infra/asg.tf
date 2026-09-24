@@ -10,6 +10,8 @@ resource "aws_autoscaling_group" "app" {
 
   target_group_arns = [aws_lb_target_group.app.arn]
 
+  capacity_rebalance = true
+
   mixed_instances_policy {
     launch_template {
       launch_template_specification {
@@ -23,10 +25,17 @@ resource "aws_autoscaling_group" "app" {
       override {
         instance_type = "t3.small"
       }
+      override {
+        instance_type = "t3a.micro"
+      }
+      override {
+        instance_type = "t3a.small"
+      }
     }
 
+    # 1 On-Demand instance always on
     instances_distribution {
-      on_demand_base_capacity                  = 2
+      on_demand_base_capacity                  = 1
       on_demand_percentage_above_base_capacity = 0
       spot_allocation_strategy                 = "price-capacity-optimized"
     }
