@@ -15,7 +15,7 @@ data "aws_iam_policy_document" "plan_trust" {
     }
 
     condition {
-      test     = "StringLike"
+      test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values   = ["repo:${var.github_repo}:pull_request"]
     }
@@ -49,7 +49,7 @@ data "aws_iam_policy_document" "apply_trust" {
     }
 
     condition {
-      test     = "StringLike"
+      test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values   = ["repo:${var.github_repo}:environment:production"]
     }
