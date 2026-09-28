@@ -130,24 +130,6 @@ resource "aws_security_group" "endpoints" {
   }
 }
 
-resource "aws_vpc_security_group_ingress_rule" "alb_from_me" {
-  security_group_id = aws_security_group.alb.id
-  description       = "HTTP from my workstation during the build"
-
-  cidr_ipv4   = var.my_ip_cidr
-  from_port   = 80
-  to_port     = 80
-  ip_protocol = "tcp"
-}
-resource "aws_vpc_security_group_ingress_rule" "alb_https_from_me" {
-  security_group_id = aws_security_group.alb.id
-  description       = "HTTPS from my workstation during the build"
-
-  cidr_ipv4   = var.my_ip_cidr
-  from_port   = 443
-  to_port     = 443
-  ip_protocol = "tcp"
-}
 
 resource "aws_vpc_security_group_ingress_rule" "alb_https_from_cloudfront" {
   security_group_id = aws_security_group.alb.id
