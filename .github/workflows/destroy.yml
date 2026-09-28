@@ -11,6 +11,7 @@ jobs:
   destroy:
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 45
     env:
       TF_VAR_aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
       TF_VAR_app_ami_id: ${{ vars.APP_AMI_ID }}
