@@ -121,6 +121,13 @@ data "aws_iam_policy_document" "apply_ssm_parameter" {
     ]
     resources = ["arn:aws:ssm:ap-southeast-1:${var.aws_account_id}:parameter/ikli/*"]
   }
+
+  statement {
+    sid       = "DescribeParameters"
+    effect    = "Allow"
+    actions   = ["ssm:DescribeParameters"] 
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "gha_apply_ssm_parameter" {
