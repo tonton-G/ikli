@@ -12,6 +12,9 @@ resource "aws_autoscaling_group" "app" {
 
   capacity_rebalance = true
 
+  enabled_metrics     = ["GroupInServiceInstances", "GroupDesiredCapacity"]
+  metrics_granularity = "1Minute"
+
   mixed_instances_policy {
     launch_template {
       launch_template_specification {
