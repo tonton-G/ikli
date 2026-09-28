@@ -22,5 +22,5 @@ override.tf.json
 .terraformrc
 terraform.rc
 !infra/terraform.tfvars.example
-
+!bootstrap/terraform.tfvars.example
 
