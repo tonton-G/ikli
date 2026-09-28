@@ -24,6 +24,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   period              = 60
   statistic           = "Sum"
   threshold           = 5
+  treat_missing_data  = "notBreaching"
   alarm_description   = "Elevated 5xx responses from app instances"
 
   dimensions = {
@@ -40,6 +41,7 @@ resource "aws_cloudwatch_metric_alarm" "dynamodb_throttles" {
   period              = 60
   statistic           = "Sum"
   threshold           = 0
+  treat_missing_data  = "notBreaching"
   alarm_description   = "DynamoDB requests being throttled"
 
   dimensions = {
@@ -58,10 +60,10 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title   = "ALB — Requests & 5xx"
-          region  = "ap-southeast-1"
-          period  = 60
-          stat    = "Sum"
+          title  = "ALB — Requests & 5xx"
+          region = "ap-southeast-1"
+          period = 60
+          stat   = "Sum"
           metrics = [
             ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.alb.arn_suffix],
             ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", aws_lb.alb.arn_suffix],
@@ -75,13 +77,13 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title   = "ASG — CPU & Instance Count"
-          region  = "ap-southeast-1"
-          period  = 60
-          stat    = "Average"
+          title  = "ASG — CPU & Instance Count"
+          region = "ap-southeast-1"
+          period = 60
+          stat   = "Average"
           metrics = [
             ["AWS/EC2", "CPUUtilization", "AutoScalingGroupName", aws_autoscaling_group.app.name],
-            ["AWS/AutoScaling", "GroupInServiceInstances", "AutoScalingGroupName", aws_autoscaling_group.app.name],
+            ["AWS/AutoScaling", "GroupInServiceInstances", "AutoScalingGroupName", aws_autoscaling_group.app.name, { "yAxis" : "right" }],
           ]
         }
       },
@@ -92,10 +94,10 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title   = "DynamoDB — Capacity & Throttles"
-          region  = "ap-southeast-1"
-          period  = 60
-          stat    = "Sum"
+          title  = "DynamoDB — Capacity & Throttles"
+          region = "ap-southeast-1"
+          period = 60
+          stat   = "Sum"
           metrics = [
             ["AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", aws_dynamodb_table.links.name],
             ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", aws_dynamodb_table.links.name],
