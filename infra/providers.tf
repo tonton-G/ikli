@@ -24,3 +24,5 @@ provider "aws" {
     }
   }
 }
+
+# test: confirming the CI plan pipeline
