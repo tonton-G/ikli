@@ -2,7 +2,7 @@
 
 A keyless link shortener. No accounts — each link gets a single edit key at creation time, which is the only way to modify or delete it. Stats stay public forever; losing the key freezes the destination but the redirect keeps working.
 
-**Live:** ikli.fyi
+**Status:** offline. The infrastructure was torn down on 2026-09-28 to stop idle cost — the ALB bills hourly whether or not anyone visits. The full stack redeploys from the `terraform deploy` workflow, and `ikli.fyi` comes back with it.
 
 ## Why this exists
 
@@ -70,7 +70,7 @@ This is a small, deliberately-scoped AWS portfolio project focused on EC2 fleet 
 **Frontend** — React 18, Vite, TypeScript, shadcn/ui (Radix primitives, restyled), Tailwind CSS v4, Caveat (display) + Geist Mono (data/UI)
 **Backend** — Node.js + Express (TypeScript), health check at `/api/health`
 **Storage** — one `LinkStore` interface with two implementations: a JSON file for local dev and tests, DynamoDB for production. Selected at startup by `DYNAMODB_TABLE`; the server refuses to boot on the file store when `NODE_ENV=production`
-**Infra as code** — Terraform
+**Infra as code** — Terraform, planned and applied from GitHub Actions over OIDC (no stored AWS keys)
 
 ## Infrastructure
 
@@ -82,7 +82,7 @@ Two route tables. The public table carries a default route to the internet gatew
 
 **Security groups** are chained by group reference, never by CIDR. A rule that names another security group is evaluated by identity at packet time, so it keeps holding as the ASG launches, terminates and replaces instances — no address is ever enumerated. Egress is scoped rather than left open: the app tier may reach the interface endpoints on 443 and DynamoDB's managed prefix list on 443, and nothing else. Rules are declared as standalone resources rather than inline blocks, because inline rules are exhaustive and cannot express two groups that reference each other.
 
-**State** stays local. A remote backend with S3 and DynamoDB locking is the right answer for a team; for a short-lived solo project it is ceremony, and the tradeoff is stated here rather than papered over.
+**State** lives in S3, in a versioned, encrypted bucket with Block Public Access on, created by the separate `bootstrap/` stack. Locking uses S3's native lock file (`use_lockfile`), so there is no DynamoDB lock table to pay for or forget at teardown. State started out local; it moved once CI had to plan and apply from ephemeral runners, which a file on one workstation can't serve.
 
 **Deliberately outside Terraform:** the Route 53 hosted zone and the AWS Budget. Both are account-scoped guardrails that must survive `terraform destroy`. A cost alarm destroyed during teardown disappears exactly when it matters, and a recreated hosted zone is assigned a different nameserver set, forcing a registrar update and a fresh propagation wait on every cycle. The zone is referenced as a `data` source.
 
@@ -126,15 +126,29 @@ npm run build     # typecheck + production builds for client and server
 
 ### Deploying the infrastructure
 
+Deploys run from GitHub Actions. No long-lived AWS access keys exist anywhere — each job exchanges a GitHub-signed OIDC token for short-lived role credentials.
+
+**One-time bootstrap.** `bootstrap/` is a separate Terraform stack, applied once from a workstation: the GitHub OIDC provider, the two CI roles, and the state bucket.
+
 ```bash
-cd infra
-cp terraform.tfvars.example terraform.tfvars   # fill in account ID and your /32
+cd bootstrap
+cp terraform.tfvars.example terraform.tfvars   # fill in account ID
 terraform init
-terraform plan
 terraform apply
 ```
 
-The provider pins `allowed_account_ids`, so a plan fails before touching anything if credentials resolve to the wrong account. `my_ip_cidr` scopes ALB ingress to a single workstation address during the build; residential addresses rotate, and a stale value presents as a hanging connection rather than a clean refusal.
+Its outputs become the repo variables `AWS_ROLE_PLAN` and `AWS_ROLE_APPLY`, alongside `AWS_ACCOUNT_ID` and `APP_AMI_ID` (the Packer-built AMI).
+
+**Workflows.**
+
+- `terraform plan` runs on every pull request that touches `infra/`, under a role with `ReadOnlyAccess`. It runs with `-lock=false` because that role can't write the lock file — only the apply role takes the lock.
+- `terraform deploy` and `terraform destroy` are manual dispatch only and run in the `production` environment, which requires a reviewer's approval. The apply role trusts only tokens issued for that environment, so a job that skips the approval gate can't assume it. Destroy is capped at 45 minutes, enough for the CloudFront disable-then-delete cycle, so a hung teardown fails instead of holding credentials for GitHub's six-hour default.
+
+**Trust is pinned by ID, not name.** The roles' trust policies match the token's subject with `StringEquals` against GitHub's immutable format, `repo:tonton-G@83625612/ikli@1359646642:...`. Numeric owner and repo IDs never change, so a deleted-and-recreated repo, or someone registering a recycled name, can't produce a matching token.
+
+**Logs stay clean.** Every job masks the account ID as its first step, before the credentials step prints the role ARN, and every Terraform run uses `-input=false`, so a missing variable fails immediately instead of waiting on a prompt nobody can answer.
+
+To plan from a workstation instead, copy `infra/terraform.tfvars.example` to `terraform.tfvars`, set the account ID and AMI ID, then `terraform init` and `terraform plan` in `infra/`. The provider pins `allowed_account_ids`, so a plan fails before touching anything if credentials resolve to the wrong account.
 
 ## Security
 
@@ -148,7 +162,7 @@ The provider pins `allowed_account_ids`, so a plan fails before touching anythin
 - **App-level** — edit keys are never stored in plaintext (SHA-256) and are compared in constant time. Destination URLs are restricted to `http`/`https`, so a stored destination can never be a `javascript:` or `data:` URI, and private IP ranges, localhost and the instance metadata endpoint are rejected. Slugs are validated at the API boundary so non-link keys in the table are unreachable from it.
 - **No write amplification from the redirect path** — see _The link record has a fixed maximum size_ above. Header-derived stats fields are capped in key space, not just in request rate, so no volume of anonymous traffic can make a link unwritable.
 
-Explicitly out of scope for this project's size: WAF, GuardDuty, AWS Config, a customer-managed KMS key, and a remote Terraform backend. Reasonable additions for a production system, disproportionate for a portfolio timebox.
+Explicitly out of scope for this project's size: WAF, GuardDuty, AWS Config, and a customer-managed KMS key. Reasonable additions for a production system, disproportionate for a portfolio timebox.
 
 **Known limitations, chosen rather than overlooked.** Slug rename reads the record and then moves it in a transaction; a visit that lands in that window increments the old item and is deleted with it, so the counter can regress by a few under load. Renames are rare and owner-initiated, and closing this needs optimistic concurrency on a path nobody races, so it is documented instead. Visitor markers are keyed by slug, so for 30 days after a rename returning visitors count as new again, and markers for a deleted link linger until the TTL sweeps them. The per-visitor marker design also turns the old bricking attack into a cost attack: many unique `User-Agent` values mean many cheap marker writes. Per-IP rate limiting, not yet built, is the mitigation for that; during the demo window the ALB is unreachable outside CloudFront, which bounds the exposure but is not the control.
 
