@@ -69,3 +69,6 @@ resource "aws_acm_certificate_validation" "alb" {
   certificate_arn         = aws_acm_certificate.alb.arn
   validation_record_fqdns = [for r in aws_route53_record.alb_validation : r.fqdn]
 }
+
+
+//test ci
