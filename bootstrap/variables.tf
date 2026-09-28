@@ -4,7 +4,7 @@ variable "aws_account_id" {
 }
 
 variable "github_repo" {
-  description = "GitHub repo allowed to assume the CI roles, as owner/repo"
+  description = "GitHub repo allowed to assume the CI roles, as owner@owner_id/repo@repo_id (GitHub's immutable OIDC sub format)"
   type        = string
-  default     = "tonton-G/ikli"
+  default     = "tonton-G@83625612/ikli@1359646642"
 }
