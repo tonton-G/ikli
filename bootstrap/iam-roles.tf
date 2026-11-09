@@ -125,7 +125,7 @@ data "aws_iam_policy_document" "apply_ssm_parameter" {
   statement {
     sid       = "DescribeParameters"
     effect    = "Allow"
-    actions   = ["ssm:DescribeParameters"] 
+    actions   = ["ssm:DescribeParameters"]
     resources = ["*"]
   }
 }
