@@ -76,11 +76,11 @@ This is a small, deliberately-scoped AWS portfolio project focused on EC2 fleet 
 
 All AWS resources are managed by Terraform except the two noted below. Nothing is console-clicked into existence outside of Terraform state.
 
-**Network.** A single VPC at `10.0.0.0/16` with DNS support and DNS hostnames both enabled — the latter is a functional prerequisite for VPC interface endpoints to resolve to private addresses, not a nicety. Four subnets across two AZs in `ap-southeast-1`. The third octet encodes tier (0–9 public, 10–19 private), with a gap left for a third tier. Availability zones are declared explicitly rather than derived from `data.aws_availability_zones`, because the CIDR-to-AZ mapping is an architectural decision and deriving it from list order would let it shift silently.
+**Network.** A single VPC (`vpc_cidr`, default `10.0.0.0/16`) with DNS support and DNS hostnames both enabled — the latter is a functional prerequisite for VPC interface endpoints to resolve to private addresses, not a nicety. Four subnets across two AZs in `ap-southeast-1`, each carved from the VPC block with `cidrsubnet(vpc_cidr, 8, netnum)`. The third octet encodes tier (0–9 public, 10–19 private), with a gap left for a third tier; variable validation rejects a netnum outside its tier or an AZ outside the region. Availability zones are declared explicitly rather than derived from `data.aws_availability_zones`, because the CIDR-to-AZ mapping is an architectural decision and deriving it from list order would let it shift silently.
 
 Two route tables. The public table carries a default route to the internet gateway; the private table carries no default route at all, which is what makes "no outbound internet" a property of the network rather than a claim. Both private subnets are associated explicitly rather than left to fall through to the VPC's main route table, so their isolation can't be changed by a route added somewhere else.
 
-**Security groups** are chained by group reference, never by CIDR. A rule that names another security group is evaluated by identity at packet time, so it keeps holding as the ASG launches, terminates and replaces instances — no address is ever enumerated. Egress is scoped rather than left open: the app tier may reach the interface endpoints on 443 and DynamoDB's managed prefix list on 443, and nothing else. Rules are declared as standalone resources rather than inline blocks, because inline rules are exhaustive and cannot express two groups that reference each other.
+**Security groups** are chained by group reference, never by CIDR. A rule that names another security group is evaluated by identity at packet time, so it keeps holding as the ASG launches, terminates and replaces instances — no address is ever enumerated. Egress is scoped rather than left open: the app tier may reach the interface endpoints on 443 (when enabled) and DynamoDB's managed prefix list on 443, and nothing else. Rules are declared as standalone resources rather than inline blocks, because inline rules are exhaustive and cannot express two groups that reference each other.
 
 **State** lives in S3, in a versioned, encrypted bucket with Block Public Access on, created by the separate `bootstrap/` stack. Locking uses S3's native lock file (`use_lockfile`), so there is no DynamoDB lock table to pay for or forget at teardown. State started out local; it moved once CI had to plan and apply from ephemeral runners, which a file on one workstation can't serve.
 
@@ -89,6 +89,25 @@ Two route tables. The public table carries a default route to the internet gatew
 **Cost shape.** The only fixed hourly costs in the build are the ALB and, when enabled, the SSM interface endpoints — three of them (`ssm`, `ssmmessages`, `ec2messages`), billed per AZ. They sit behind an `enable_ssm_endpoints` variable that defaults to off. Everything else is either free (VPC, subnets, route tables, security groups, gateway endpoint, ACM, IAM) or usage-priced (DynamoDB on demand, CloudFront, Route 53 queries).
 
 **Teardown is part of the design.** `terraform destroy` does not remove Packer-built AMIs or their backing EBS snapshots, and deregistering an AMI does not delete its snapshot — both bill until deleted by hand. They are on the teardown checklist alongside a `terraform plan` review confirming nothing touches the hosted zone.
+
+### How the Terraform is organized
+
+`infra/` is the root module; the network (VPC, subnets, routing, endpoints, security groups) is a local child module in `infra/modules/network/`. The code doubles as Terraform Associate practice, so each language feature appears where it does real work and carries a short comment explaining it:
+
+| Concept | Where |
+|---|---|
+| Local module, inputs and outputs, provider inheritance | `network.tf`, `modules/network/` |
+| `moved` blocks — a rename and a move into the module, including `count` instances | `moved.tf` |
+| Variables: object and map types, `validation`, cross-variable validation, `can()` | `variables.tf` |
+| Locals vs variables | `locals.tf` |
+| Data sources (hosted zone, AMI, managed CloudFront policies, region) | `data.tf`, `compute.tf`, `cloudfront.tf`, `modules/network/endpoints.tf` |
+| `for_each` over a map, a resource and a conditional set; `count` as an on/off switch | `modules/network/` |
+| `dynamic` block | `asg.tf` (Spot instance-type overrides) |
+| `precondition` / `postcondition` | `cloudfront.tf`, `compute.tf` |
+| `check` block (warns, never blocks) | `checks.tf` |
+| Provider alias | `providers.tf`, `acm.tf` |
+| Implicit dependencies by reference | `compute.tf` (launch template → instance profile) |
+| Backend limits (no variables in `backend`) | `versions.tf` |
 
 ## Design decisions worth noting
 
