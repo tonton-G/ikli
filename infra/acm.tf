@@ -1,6 +1,6 @@
 resource "aws_acm_certificate" "cloudfront" {
   provider          = aws.us_east_1
-  domain_name       = "ikli.fyi"
+  domain_name       = local.domain
   validation_method = "DNS"
 
   lifecycle {
@@ -8,12 +8,12 @@ resource "aws_acm_certificate" "cloudfront" {
   }
 
   tags = {
-    Name = "ikli-cloudfront-cert"
+    Name = "${local.name}-cloudfront-cert"
   }
 }
 
 resource "aws_acm_certificate" "alb" {
-  domain_name       = "ikli.fyi"
+  domain_name       = local.domain
   validation_method = "DNS"
 
   lifecycle {
@@ -21,7 +21,7 @@ resource "aws_acm_certificate" "alb" {
   }
 
   tags = {
-    Name = "ikli-alb-cert"
+    Name = "${local.name}-alb-cert"
   }
 }
 
@@ -71,4 +71,3 @@ resource "aws_acm_certificate_validation" "alb" {
 }
 
 
-//test ci

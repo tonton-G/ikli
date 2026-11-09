@@ -1,9 +1,9 @@
 resource "aws_autoscaling_group" "app" {
-  name                = "ikli-app-asg"
-  min_size            = 2
-  max_size            = 4
-  desired_capacity    = 2
-  vpc_zone_identifier = [aws_subnet.private["a"].id, aws_subnet.private["b"].id]
+  name                = "${local.name}-app-asg"
+  min_size            = var.asg_capacity.min
+  max_size            = var.asg_capacity.max
+  desired_capacity    = var.asg_capacity.desired
+  vpc_zone_identifier = values(module.network.private_subnet_ids)
 
   health_check_type         = "ELB"
   health_check_grace_period = 300
@@ -22,17 +22,14 @@ resource "aws_autoscaling_group" "app" {
         version            = "$Latest"
       }
 
-      override {
-        instance_type = "t3.micro"
-      }
-      override {
-        instance_type = "t3.small"
-      }
-      override {
-        instance_type = "t3a.micro"
-      }
-      override {
-        instance_type = "t3a.small"
+      # dynamic block: generates one nested `override` block per element.
+      # The iterator is named after the block, so override.value is the
+      # current instance type.
+      dynamic "override" {
+        for_each = var.instance_types
+        content {
+          instance_type = override.value
+        }
       }
     }
 
@@ -46,13 +43,13 @@ resource "aws_autoscaling_group" "app" {
 
   tag {
     key                 = "Name"
-    value               = "ikli-app"
+    value               = "${local.name}-app"
     propagate_at_launch = true
   }
-
 }
+
 resource "aws_autoscaling_policy" "app_cpu" {
-  name                   = "ikli-app-cpu-target-tracking"
+  name                   = "${local.name}-app-cpu-target-tracking"
   autoscaling_group_name = aws_autoscaling_group.app.name
   policy_type            = "TargetTrackingScaling"
 

@@ -1,14 +1,27 @@
 resource "aws_cloudfront_origin_access_control" "assets" {
-  name                              = "ikli-assets-oac"
+  name                              = "${local.name}-assets-oac"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
 
+# AWS-managed policies, looked up by name instead of pasting their IDs.
+data "aws_cloudfront_cache_policy" "caching_disabled" {
+  name = "Managed-CachingDisabled"
+}
+
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
+
+data "aws_cloudfront_origin_request_policy" "all_viewer" {
+  name = "Managed-AllViewer"
+}
+
 resource "aws_cloudfront_distribution" "main" {
   enabled         = true
   is_ipv6_enabled = true
-  aliases         = ["ikli.fyi"]
+  aliases         = [local.domain]
 
   origin {
     domain_name              = aws_s3_bucket.assets.bucket_regional_domain_name
@@ -17,7 +30,7 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   origin {
-    domain_name = aws_lb.alb.dns_name
+    domain_name = aws_lb.main.dns_name
     origin_id   = "alb-app"
 
     custom_header {
@@ -33,14 +46,13 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
-
   default_cache_behavior {
     allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods           = ["GET", "HEAD"]
     target_origin_id         = "alb-app"
     viewer_protocol_policy   = "redirect-to-https"
-    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-    origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3"
+    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
   }
 
   ordered_cache_behavior {
@@ -49,7 +61,7 @@ resource "aws_cloudfront_distribution" "main" {
     cached_methods         = ["GET", "HEAD"]
     target_origin_id       = "s3-assets"
     viewer_protocol_policy = "redirect-to-https"
-    cache_policy_id        = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
   }
 
   restrictions {
@@ -63,7 +75,21 @@ resource "aws_cloudfront_distribution" "main" {
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
+
   tags = {
-    Name = "ikli-cdn"
+    Name = "${local.name}-cdn"
+  }
+
+  # A precondition states an assumption this resource depends on. It's
+  # checked during plan when the values are known, otherwise during apply
+  # just before this resource is created (on a first apply the cert ARN is
+  # unknown until the cert exists). CloudFront only accepts us-east-1
+  # certificates, so a cert created through the wrong provider fails here
+  # with a clear message instead of a CloudFront API error.
+  lifecycle {
+    precondition {
+      condition     = startswith(aws_acm_certificate.cloudfront.arn, "arn:aws:acm:us-east-1:")
+      error_message = "The CloudFront certificate must be issued in us-east-1."
+    }
   }
 }

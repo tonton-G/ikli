@@ -1,9 +1,9 @@
 resource "aws_s3_bucket" "assets" {
-  bucket        = "ikli-assets-${data.aws_caller_identity.current.account_id}"
+  bucket        = "${local.name}-assets-${data.aws_caller_identity.current.account_id}"
   force_destroy = true
 
   tags = {
-    Name = "ikli-assets"
+    Name = "${local.name}-assets"
   }
 }
 
@@ -27,7 +27,7 @@ resource "aws_s3_bucket_policy" "assets" {
         Sid       = "AllowCloudFrontServicePrincipal"
         Effect    = "Allow"
         Principal = { Service = "cloudfront.amazonaws.com" }
-        Action    = "s3:getObject"
+        Action    = "s3:GetObject"
         Resource  = "${aws_s3_bucket.assets.arn}/*"
         Condition = {
           StringEquals = {

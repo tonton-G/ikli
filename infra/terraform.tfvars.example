@@ -1,2 +1,5 @@
 aws_account_id = "<YOUR_AWS_ACCOUNT_ID>"
-my_ip_cidr     = "<YOUR_IP_ADDRESS>/32"
+app_ami_id     = "<PACKER_BUILT_AMI_ID>"
+
+# Optional — defaults are in variables.tf
+# enable_ssm_endpoints = true

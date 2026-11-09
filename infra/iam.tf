@@ -11,11 +11,11 @@ data "aws_iam_policy_document" "ec2_assume_role" {
 }
 
 resource "aws_iam_role" "app" {
-  name               = "ikli-app-role"
+  name               = "${local.name}-app-role"
   assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
 
   tags = {
-    Name = "ikli-app-role"
+    Name = "${local.name}-app-role"
   }
 }
 
@@ -36,7 +36,7 @@ data "aws_iam_policy_document" "app_dynamodb" {
 }
 
 resource "aws_iam_role_policy" "app_dynamodb" {
-  name   = "ikli-app-dynamodb"
+  name   = "${local.name}-app-dynamodb"
   role   = aws_iam_role.app.id
   policy = data.aws_iam_policy_document.app_dynamodb.json
 }
@@ -48,11 +48,11 @@ resource "aws_iam_role_policy_attachment" "app_ssm" {
 }
 
 resource "aws_iam_instance_profile" "app" {
-  name = "ikli-app-profile"
+  name = "${local.name}-app-profile"
   role = aws_iam_role.app.name
 
   tags = {
-    Name = "ikli-app-profile"
+    Name = "${local.name}-app-profile"
   }
 }
 

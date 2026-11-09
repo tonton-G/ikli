@@ -1,6 +1,5 @@
-
 resource "aws_dynamodb_table" "links" {
-  name         = "ikli-links"
+  name         = "${local.name}-links"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "slug"
 
@@ -9,7 +8,9 @@ resource "aws_dynamodb_table" "links" {
     type = "S"
   }
 
-  # all time. Link records never set the attribute and are never expired.
+  # Visitor markers (v# keys) set expiresAt, so "unique visitors" counts
+  # within a rolling window rather than all time. Link records never set
+  # the attribute and are never expired.
   ttl {
     attribute_name = "expiresAt"
     enabled        = true
@@ -21,6 +22,6 @@ resource "aws_dynamodb_table" "links" {
   deletion_protection_enabled = false
 
   tags = {
-    Name = "ikli-links"
+    Name = "${local.name}-links"
   }
 }

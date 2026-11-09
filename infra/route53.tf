@@ -1,6 +1,6 @@
 resource "aws_route53_record" "apex" {
   zone_id = data.aws_route53_zone.main.zone_id
-  name    = "ikli.fyi"
+  name    = local.domain
   type    = "A"
 
   alias {
@@ -12,7 +12,7 @@ resource "aws_route53_record" "apex" {
 
 resource "aws_route53_record" "apex_ipv6" {
   zone_id = data.aws_route53_zone.main.zone_id
-  name    = "ikli.fyi"
+  name    = local.domain
   type    = "AAAA"
 
   alias {

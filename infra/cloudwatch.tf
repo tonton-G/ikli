@@ -1,5 +1,5 @@
 resource "aws_cloudwatch_metric_alarm" "alb_unhealthy_hosts" {
-  alarm_name          = "ikli-alb-unhealthy-hosts"
+  alarm_name          = "${local.name}-alb-unhealthy-hosts"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
   metric_name         = "UnHealthyHostCount"
@@ -11,12 +11,12 @@ resource "aws_cloudwatch_metric_alarm" "alb_unhealthy_hosts" {
 
   dimensions = {
     TargetGroup  = aws_lb_target_group.app.arn_suffix
-    LoadBalancer = aws_lb.alb.arn_suffix
+    LoadBalancer = aws_lb.main.arn_suffix
   }
 }
 
 resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
-  alarm_name          = "ikli-alb-5xx"
+  alarm_name          = "${local.name}-alb-5xx"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "HTTPCode_Target_5XX_Count"
@@ -28,12 +28,12 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   alarm_description   = "Elevated 5xx responses from app instances"
 
   dimensions = {
-    LoadBalancer = aws_lb.alb.arn_suffix
+    LoadBalancer = aws_lb.main.arn_suffix
   }
 }
 
 resource "aws_cloudwatch_metric_alarm" "dynamodb_throttles" {
-  alarm_name          = "ikli-dynamodb-throttles"
+  alarm_name          = "${local.name}-dynamodb-throttles"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "ThrottledRequests"
@@ -49,7 +49,7 @@ resource "aws_cloudwatch_metric_alarm" "dynamodb_throttles" {
   }
 }
 resource "aws_cloudwatch_dashboard" "main" {
-  dashboard_name = "ikli-overview"
+  dashboard_name = "${local.name}-overview"
 
   dashboard_body = jsonencode({
     widgets = [
@@ -61,12 +61,12 @@ resource "aws_cloudwatch_dashboard" "main" {
         height = 6
         properties = {
           title  = "ALB — Requests & 5xx"
-          region = "ap-southeast-1"
+          region = var.aws_region
           period = 60
           stat   = "Sum"
           metrics = [
-            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.alb.arn_suffix],
-            ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", aws_lb.alb.arn_suffix],
+            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.main.arn_suffix],
+            ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", aws_lb.main.arn_suffix],
           ]
         }
       },
@@ -78,7 +78,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         height = 6
         properties = {
           title  = "ASG — CPU & Instance Count"
-          region = "ap-southeast-1"
+          region = var.aws_region
           period = 60
           stat   = "Average"
           metrics = [
@@ -95,7 +95,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         height = 6
         properties = {
           title  = "DynamoDB — Capacity & Throttles"
-          region = "ap-southeast-1"
+          region = var.aws_region
           period = 60
           stat   = "Sum"
           metrics = [
